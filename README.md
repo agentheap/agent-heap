@@ -26,7 +26,7 @@ It runs on Arbitrum Sepolia today and is ready for mainnet deployment.
 
 - **Autonomous loop** — 24/7 agent cycle (collect → analyze → signal → execute) on a configurable interval
 - **Live yield data** — DeFiLlama APY + TVL feeds for Aave V3, Compound, and Morpho
-- **LLM analysis** — Ranks pools by risk-adjusted return with any LLM (OpenAI, Anthropic, open-source); falls back to highest-APY heuristic
+- **LLM analysis** — Ranks pools by risk-adjusted return with any LLM (OpenAI, Anthropic, Gemini, Groq, Mistral, DeepSeek, Together); falls back to highest-APY heuristic
 - **Kelly-criterion sizing** — Computes optimal position size based on win probability and expected return
 - **Circuit breaker** — Daily PnL tracking; halts execution if drawdown exceeds configurable limit
 - **Slippage protection** — Rejects trades exceeding configurable slippage threshold
@@ -45,9 +45,7 @@ uv run pytest -v              # 18 tests
 agent-heap start --interval 21600   # 6h agent loop
 ```
 
-Environment: `LLM_API_KEY` (for AI-powered analysis), `ARBITRUM_RPC`, `PRIVATE_KEY`, `DATABASE_URL`.
-
-See [`.env.example`](.env.example) for all options.
+Environment: `LLM_MODEL` (e.g. `gpt-4o`, `claude-sonnet-4`, `gemini/gemini-2.0-flash`) + API key for your provider. See [`.env.example`](.env.example) for all options.
 
 ## Architecture
 

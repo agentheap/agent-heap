@@ -14,35 +14,33 @@ def analyze(state: dict[str, Any]) -> dict[str, Any]:
     if not yields:
         return {**state, "analysis": None}
 
-    nvidia_key = os.getenv("LLM_API_KEY") or os.getenv("NVIDIA_NIM_API_KEY")
-
-    if nvidia_key:
+    model = os.getenv("LLM_MODEL")
+    if model:
         try:
-            return _analyze_with_nvidia(state, yields, nvidia_key)
+            return _analyze_with_llm(state, yields, model)
         except Exception:
             pass
 
     return _analyze_fallback(state, yields)
 
 
-def _analyze_with_nvidia(
+def _analyze_with_llm(
     state: dict[str, Any],
     yields: list[dict[str, Any]],
-    api_key: str,
+    model: str,
 ) -> dict[str, Any]:
-    from langchain_nvidia_ai_endpoints import ChatNVIDIA
+    from litellm import completion
 
-    llm = ChatNVIDIA(
-        model="mistralai/mistral-7b-instruct-v0.3",
-        api_key=api_key,
-        temperature=0.1,
-    )
     pool_lines = "\n".join(
         f"{p['protocol']} / {p['pool']}: {p['apy']:.1f}% APY, ${p['tvl']:,.0f} TVL on {p['chain']}"
         for p in yields[:20]
     )
-    response = llm.invoke(ANALYST_PROMPT.format(pools=pool_lines))
-    content = response.content.strip()
+    response = completion(
+        model=model,
+        messages=[{"role": "user", "content": ANALYST_PROMPT.format(pools=pool_lines)}],
+        temperature=0.1,
+    )
+    content = response.choices[0].message.content.strip()
 
     pool_name = None
     reason = content
