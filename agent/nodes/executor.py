@@ -10,6 +10,7 @@ import os
 from typing import Any
 
 from chains.arbitrum import ARBITRUM_CHAIN_ID, ARBITRUM_RPC
+from risk.slippage import check_trade_allowed
 from agent.nodes.abi import (
     PROTOCOL_ADDRESSES,
     USDC_ARB_SEPOLIA,
@@ -36,6 +37,20 @@ def execute(state: dict[str, Any]) -> dict[str, Any]:
     signal = state.get("signal")
     if not signal:
         return {**state, "tx_result": None}
+
+    # Slippage gate: reject trades that would exceed max slippage.
+    pool_data = {"tvl": signal.get("tvl", 0)}
+    if pool_data["tvl"] > 0:
+        allowed, msg = check_trade_allowed(signal, pool_data)
+        if not allowed:
+            return {
+                **state,
+                "tx_result": {
+                    "simulated": True,
+                    "error": msg,
+                    "slippage_blocked": True,
+                },
+            }
 
     private_key = os.getenv("PRIVATE_KEY")
     if not private_key:

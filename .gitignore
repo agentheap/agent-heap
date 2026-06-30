@@ -39,3 +39,12 @@ coverage/
 coverage.json
 # Python cache
 __pycache__/
+
+# Gas Town (added by gt)
+.opencode/
+.logs/
+state.json
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+chroma_data/

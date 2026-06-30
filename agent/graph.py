@@ -1,4 +1,4 @@
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from langgraph.graph import StateGraph
 
@@ -7,6 +7,7 @@ from agent.nodes.collector import collect_yields
 from agent.nodes.analyzer import analyze
 from agent.nodes.signal import generate_signal
 from agent.nodes.executor import execute
+from risk.circuit_breaker import CircuitBreaker
 
 
 class AgentState(TypedDict):
@@ -15,6 +16,16 @@ class AgentState(TypedDict):
     signal: dict[str, Any] | None
     tx_result: dict[str, Any] | None
     errors: list[str]
+
+
+_breaker = CircuitBreaker()
+
+
+def _cb_router(state: AgentState) -> Literal["executor", "__end__"]:
+    """Route to executor if circuit breaker is not tripped, otherwise skip."""
+    if _breaker.is_tripped():
+        return "__end__"
+    return "executor"
 
 
 def run_agent() -> dict[str, Any]:
@@ -26,7 +37,7 @@ def run_agent() -> dict[str, Any]:
     builder.set_entry_point("collector")
     builder.add_edge("collector", "analyzer")
     builder.add_edge("analyzer", "signaler")
-    builder.add_edge("signaler", "executor")
+    builder.add_conditional_edges("signaler", _cb_router)
     graph = builder.compile()
     result = graph.invoke(
         {
@@ -42,6 +53,8 @@ def run_agent() -> dict[str, Any]:
     tx = result.get("tx_result")
     signal = result.get("signal")
     if tx:
+        # Record trade with circuit breaker (0 PnL for simulation)
+        _breaker.record_trade(0.0)
         mem = AgentMemory()
         mem.store_decision(
             {
