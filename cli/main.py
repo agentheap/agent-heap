@@ -2,6 +2,7 @@ import os
 import signal
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import click
 from dotenv import load_dotenv
@@ -9,7 +10,13 @@ from rich.console import Console
 from rich.table import Table
 
 from agent.graph import run_agent
+from chains.arbitrum import ARBITRUM_NETWORK
 from db.session import get_recent_trades, get_agent_state, save_trade, set_agent_status
+from wallet.generator import (
+    check_balance,
+    generate_wallet,
+    print_funding_instructions,
+)
 
 load_dotenv()
 console = Console()
@@ -105,6 +112,75 @@ def history():
             str(t.timestamp) if t.timestamp else "",
         )
     console.print(table)
+
+
+@cli.group()
+def wallet():
+    """Wallet management commands."""
+    pass
+
+
+@wallet.command()
+@click.option(
+    "--output", "-o", default=None, help="Write wallet JSON to this file path"
+)
+def generate(output: str | None):
+    """Generate a fresh wallet for the active Arbitrum network.
+
+    Uses ARBITRUM_NETWORK env var (default: sepolia) to determine the target network.
+    """
+    network_label = "Arbitrum One mainnet" if ARBITRUM_NETWORK == "mainnet" else "Arbitrum Sepolia"
+    console.print(f"[bold]Generating wallet for {network_label}...[/bold]")
+
+    wallet = generate_wallet(output_path=output)
+
+    console.print(f"[green]✓[/green] Wallet address: [bold]{wallet.address}[/bold]")
+
+    if output:
+        abs_path = Path(output).resolve()
+        console.print(f"[green]✓[/green] Wallet saved to: [bold]{abs_path}[/bold]")
+        console.print("    [yellow]⚠ Keep this file secure![/yellow]")
+
+    print_funding_instructions(wallet)
+
+
+@wallet.command()
+def balance():
+    """Check the balance of the configured wallet.
+
+    Reads PRIVATE_KEY from environment and queries the current network.
+    """
+    result = check_balance()
+
+    if "error" in result:
+        console.print(f"[red]Error:[/red] {result['error']}")
+        console.print("\n[yellow]Set PRIVATE_KEY in your environment to check balance.[/yellow]")
+        return
+
+    table = Table(title=f"Wallet Balance ({result['network']})")
+    table.add_column("Asset", style="cyan")
+    table.add_column("Balance", style="white")
+    table.add_row("Address", result.get("address", "unknown"))
+    table.add_row("ETH", f"{result['eth']:.6f}")
+    console.print(table)
+
+
+@wallet.command()
+@click.option("--output", "-o", default=None, help="Write wallet JSON to this file path")
+def new(output: str | None):
+    """Alias for 'wallet generate' — create a new wallet and print funding instructions."""
+    network_label = "Arbitrum One mainnet" if ARBITRUM_NETWORK == "mainnet" else "Arbitrum Sepolia"
+    console.print(f"[bold]Generating wallet for {network_label}...[/bold]")
+
+    wallet = generate_wallet(output_path=output)
+
+    console.print(f"[green]✓[/green] Wallet address: [bold]{wallet.address}[/bold]")
+
+    if output:
+        abs_path = Path(output).resolve()
+        console.print(f"[green]✓[/green] Wallet saved to: [bold]{abs_path}[/bold]")
+
+    print_funding_instructions(wallet)
 
 
 if __name__ == "__main__":
