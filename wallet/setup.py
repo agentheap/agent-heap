@@ -1,4 +1,8 @@
-"""Wallet setup — generates a fresh agent wallet and outputs details."""
+"""Wallet setup — generates a fresh agent wallet and outputs details.
+
+Respects the ARBITRUM_NETWORK env var ("sepolia" or "mainnet") to determine
+which network the wallet is created for.
+"""
 
 import os
 import json
@@ -6,6 +10,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from chains.arbitrum import (
+    ARBITRUM_CHAIN_ID,
+    ARBITRUM_NETWORK,
+    ARBITRUM_RPC,
+    is_mainnet,
+)
 from wallet.key_manager import KeyManager
 
 
@@ -18,13 +28,22 @@ def generate_wallet(output_path: str | None = None) -> dict:
     private_key = "0x" + secrets.token_hex(32)
     account = Account.from_key(private_key)
 
-    wallet_info = {
-        "address": account.address,
-        "private_key": private_key,
-        "network": "Arbitrum Sepolia (testnet)",
-        "chain_id": 421614,
-        "rpc_url": "https://sepolia-rollup.arbitrum.io/rpc",
-        "notes": (
+    if is_mainnet():
+        network_label = "Arbitrum One (mainnet)"
+        chain_id = 42161
+        rpc_url = "https://arb1.arbitrum.io/rpc"
+        notes = (
+            "MAINNET WALLET — for Agent Heap mainnet operations.\n"
+            "⚠️  THIS IS REAL MONEY. Be careful!\n\n"
+            "Fund with real ETH from any exchange or bridge:\n"
+            "  https://bridge.arbitrum.io/\n\n"
+            "Minimum recommended: ~0.01 ETH for gas + USDC for deposits\n"
+        )
+    else:
+        network_label = "Arbitrum Sepolia (testnet)"
+        chain_id = 421614
+        rpc_url = "https://sepolia-rollup.arbitrum.io/rpc"
+        notes = (
             "TESTNET WALLET — for Agent Heap testnet operations.\n"
             "Fund with testnet ETH from Arbitrum Sepolia faucet:\n"
             "  https://faucet.quicknode.com/arbitrum/sepolia\n"
@@ -32,7 +51,15 @@ def generate_wallet(output_path: str | None = None) -> dict:
             "  https://bwarelabs.com/faucets/arbitrum-sepolia\n\n"
             "Get testnet USDC on Arbitrum Sepolia via Circle faucet:\n"
             "  https://faucet.circle.com/\n"
-        ),
+        )
+
+    wallet_info = {
+        "address": account.address,
+        "private_key": private_key,
+        "network": network_label,
+        "chain_id": chain_id,
+        "rpc_url": rpc_url,
+        "notes": notes,
     }
 
     if output_path:

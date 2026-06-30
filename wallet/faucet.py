@@ -1,12 +1,19 @@
-"""Faucet guide and helper — get testnet ETH/USDC for Agent Heap."""
+"""Faucet guide and helper — get testnet ETH/USDC or mainnet funding for Agent Heap.
+
+Respects the ARBITRUM_NETWORK env var ("sepolia" or "mainnet") to determine
+which network to show instructions for.
+"""
 
 import json
 from pathlib import Path
 from web3 import Web3
 
+from chains.arbitrum import ARBITRUM_RPC, is_mainnet
+
 
 RPC_URLS = {
     "arbitrum-sepolia": "https://sepolia-rollup.arbitrum.io/rpc",
+    "arbitrum-one": "https://arb1.arbitrum.io/rpc",
     "base-sepolia": "https://sepolia.base.org",
 }
 
@@ -40,15 +47,23 @@ def load_wallet() -> dict | None:
     return json.loads(WALLET_PATH.read_text())
 
 
-def check_balance(chain: str = "arbitrum-sepolia") -> dict:
-    """Check ETH balance on a given chain."""
+def check_balance(chain: str | None = None) -> dict:
+    """Check ETH balance of the configured wallet on the configured network."""
+    if chain is None:
+        chain = "arbitrum-one" if is_mainnet() else "arbitrum-sepolia"
     rpc = RPC_URLS.get(chain)
     if not rpc:
         return {"error": f"Unknown chain: {chain}"}
 
     wallet = load_wallet()
     if not wallet:
-        return {"error": "No wallet found. Generate one first: python -m wallet.setup --generate"}
+        return {
+            "error": (
+                "No wallet found. Generate one first:\n"
+                "  uv run python -m wallet.setup --generate   (testnet, default)\n"
+                "  ARBITRUM_NETWORK=mainnet uv run python -m wallet.setup --generate   (mainnet)"
+            )
+        }
 
     w3 = Web3(Web3.HTTPProvider(rpc))
     if not w3.is_connected():
@@ -68,7 +83,7 @@ def check_balance(chain: str = "arbitrum-sepolia") -> dict:
 
 
 def print_status():
-    """Print wallet status across all supported chains."""
+    """Print wallet status and funding instructions for the active network."""
     wallet = load_wallet()
     if not wallet:
         print("❌ No wallet found. Generate one first:")
@@ -79,40 +94,65 @@ def print_status():
     print(f"║     Agent Heap — Wallet Status           ║")
     print(f"╚══════════════════════════════════════════╝")
     print(f"\n📋 Wallet Address: {wallet['address']}")
-    print(f"   Network: {wallet.get('network', 'Arbitrum Sepolia (testnet)')}")
+    print(f"   Network: {wallet.get('network', 'Unknown')}")
     print()
 
-    for chain in ["arbitrum-sepolia", "base-sepolia"]:
-        result = check_balance(chain)
+    if is_mainnet():
+        result = check_balance("arbitrum-one")
         if "error" in result:
-            print(f"  {chain}: ❌ {result['error']}")
+            print(f"  Arbitrum One: ❌ {result['error']}")
         else:
             eth = result["balance_eth"]
             icon = "✅" if eth > 0.001 else "⚠️"
-            print(f"  {chain}: {icon} {eth:.6f} ETH")
+            print(f"  Arbitrum One: {icon} {eth:.6f} ETH")
 
-    print()
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("  FUNDING INSTRUCTIONS")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("\n  1. Go to any faucet below and paste your wallet address")
-    print(f"     Address: {wallet['address']}")
-    print()
-    print("  2. Arbitrum Sepolia faucets (ETH for gas):")
-    for name, url in FAUCET_LINKS["arbitrum-sepolia"]:
-        print(f"     • {name}: {url}")
-    print()
-    print("  3. Base Sepolia faucets (ETH for gas):")
-    for name, url in FAUCET_LINKS["base-sepolia"]:
-        print(f"     • {name}: {url}")
-    print()
-    print("  4. USDC faucets:")
-    for name, url in USDC_FAUCETS:
-        print(f"     • {name}: {url}")
-    print()
-    print("  5. After funding, run this again to verify:")
-    print("     uv run python -m wallet.faucet")
-    print()
+        print()
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("  MAINNET FUNDING INSTRUCTIONS")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print(f"\n  ⚠️  THIS IS REAL MONEY. Be careful!")
+        print()
+        print(f"  To fund your wallet, send ETH and USDC to:")
+        print(f"  {wallet['address']}")
+        print()
+        print("  1. Buy ETH on any exchange (Coinbase, Binance, Kraken)")
+        print("  2. Withdraw to the Arbitrum One network (not Ethereum L1)")
+        print(f"  Minimum: ~0.01 ETH for gas + USDC for deposits")
+        print()
+        print("  After funding, run:")
+        print("    uv run python -m wallet.faucet")
+    else:
+        for chain_name in ["arbitrum-sepolia", "base-sepolia"]:
+            result = check_balance(chain_name)
+            if "error" in result:
+                print(f"  {chain_name}: ❌ {result['error']}")
+            else:
+                eth = result["balance_eth"]
+                icon = "✅" if eth > 0.001 else "⚠️"
+                print(f"  {chain_name}: {icon} {eth:.6f} ETH")
+
+        print()
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("  FUNDING INSTRUCTIONS (TESTNET)")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print(f"\n  1. Go to any faucet below and paste your wallet address")
+        print(f"     Address: {wallet['address']}")
+        print()
+        print("  2. Arbitrum Sepolia faucets (ETH for gas):")
+        for name, url in FAUCET_LINKS["arbitrum-sepolia"]:
+            print(f"     • {name}: {url}")
+        print()
+        print("  3. Base Sepolia faucets (ETH for gas):")
+        for name, url in FAUCET_LINKS["base-sepolia"]:
+            print(f"     • {name}: {url}")
+        print()
+        print("  4. USDC faucets:")
+        for name, url in USDC_FAUCETS:
+            print(f"     • {name}: {url}")
+        print()
+        print("  5. After funding, run this again to verify:")
+        print("     uv run python -m wallet.faucet")
+        print()
 
 
 if __name__ == "__main__":

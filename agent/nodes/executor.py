@@ -1,6 +1,7 @@
 """Executor node that constructs and sends deposit transactions to DeFi protocols.
 
-Supports Aave V3, Compound III, and Morpho Blue on Arbitrum Sepolia.
+Supports Aave V3, Compound III, and Morpho Blue on Arbitrum Sepolia and
+Arbitrum One mainnet.  Toggle via ARBITRUM_NETWORK env var.
 When PRIVATE_KEY env var is set, builds and sends real transactions.
 Otherwise returns a simulated result (backward compatible).
 """
@@ -9,11 +10,15 @@ import logging
 import os
 from typing import Any
 
-from chains.arbitrum import ARBITRUM_CHAIN_ID, ARBITRUM_RPC
+from chains.arbitrum import (
+    ARBITRUM_CHAIN_ID,
+    ARBITRUM_RPC,
+    is_mainnet,
+)
 from risk.slippage import check_trade_allowed
 from agent.nodes.abi import (
     PROTOCOL_ADDRESSES,
-    USDC_ARB_SEPOLIA,
+    USDC,
     load_aave_pool_abi,
     load_compound_comet_abi,
     load_erc20_abi,
@@ -21,6 +26,11 @@ from agent.nodes.abi import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Gas safety ──────────────────────────────────────────────────────
+# Apply a 20 % buffer on top of the estimated gas to prevent out-of-gas
+# failures on L2 where state-dependent estimates can drift.
+GAS_BUFFER_MULTIPLIER = 1.2
 
 # ── Approve thresholds ──────────────────────────────────────────────
 # Re-approve only when remaining allowance drops below this factor
@@ -127,7 +137,7 @@ def _build_aave_deposit(amount_wei: int, sender: str) -> dict[str, Any]:
     data = contract.encode_abi(
         "deposit",
         args=[
-            USDC_ARB_SEPOLIA,  # asset
+            USDC,  # asset (auto-selects mainnet or sepolia)
             amount_wei,  # amount
             sender,  # onBehalfOf
             0,  # referralCode
@@ -176,7 +186,7 @@ def _build_morpho_deposit(amount_wei: int, sender: str) -> dict[str, Any]:
     # supply the correct loanToken, collateralToken, oracle, IRM and
     # LLTV for the specific market.
     market_params = (
-        USDC_ARB_SEPOLIA,  # loanToken
+        USDC,  # loanToken (auto-selects mainnet or sepolia)
         "0x0000000000000000000000000000000000000000",  # collateralToken (none)
         "0x0000000000000000000000000000000000000000",  # oracle (placeholder)
         "0x0000000000000000000000000000000000000000",  # irm (placeholder)
@@ -217,26 +227,50 @@ def _execute_real(
         action: str = signal["action"]
         amount: float = signal["amount"]
         pool: str = signal.get("pool", "USDC")
-        token_address = USDC_ARB_SEPOLIA
+        _token_address = USDC
 
         if action != "deposit":
             logger.warning("Unsupported action '%s' – simulating", action)
             return _simulate(state, signal)
 
-        amount_wei = _to_wei(w3, amount, token_address)
+        # ── Balance check (ETH for gas) ──────────────────────────────
+        network_label = "mainnet" if is_mainnet() else "sepolia"
+        balance_wei = w3.eth.get_balance(sender)
+        balance_eth = float(w3.from_wei(balance_wei, "ether"))
+        min_gas_eth = 0.002 if is_mainnet() else 0.01  # ~$4-6 on mainnet vs free on testnet
+        if balance_eth < min_gas_eth:
+            msg = (
+                f"Insufficient ETH for gas on {network_label}: "
+                f"{balance_eth:.6f} ETH (need ≥ {min_gas_eth} ETH). "
+                f"Fund wallet {sender} and retry."
+            )
+            logger.error(msg)
+            return {
+                **state,
+                "tx_result": {
+                    "simulated": True,
+                    "error": msg,
+                    "action": action,
+                    "protocol": protocol,
+                    "pool": pool,
+                    "amount": amount,
+                },
+            }
+
+        amount_wei = _to_wei(w3, amount, _token_address)
         protocol_addr = PROTOCOL_ADDRESSES.get(protocol)
         if not protocol_addr:
             logger.warning("Unknown protocol '%s' – simulating", protocol)
             return _simulate(state, signal)
 
         # ── Approve step (token assets only, not native ETH) ──────
-        if not _is_native_eth(token_address):
-            approve_tx = build_approve_tx(protocol_addr, amount_wei, token_address)
+        if not _is_native_eth(_token_address):
+            approve_tx = build_approve_tx(protocol_addr, amount_wei, _token_address)
             if approve_tx:
                 _send_transaction(w3, account, approve_tx)
 
         # ── Deposit transaction ────────────────────────────────────
-        deposit_def = build_deposit_tx(protocol, amount_wei, sender, token_address)
+        deposit_def = build_deposit_tx(protocol, amount_wei, sender, _token_address)
         if deposit_def is None:
             return _simulate(state, signal)
 
@@ -253,6 +287,7 @@ def _execute_real(
             "gas_cost": receipt.get("gasUsed", 0) if receipt else 0,
             "block_number": receipt.get("blockNumber") if receipt else None,
             "reason": signal.get("reason"),
+            "network": network_label,
         }
         return {**state, "tx_result": tx_result}
 
@@ -320,11 +355,18 @@ def _send_transaction(w3, account, tx_def: dict[str, Any]) -> tuple[Any, dict]:
         "from": account.address,
         "nonce": w3.eth.get_transaction_count(account.address),
     }
-    # Estimate gas (fall back to 500k on failure)
+    # Estimate gas, then apply 20% buffer to prevent out-of-gas on L2
     try:
-        tx["gas"] = w3.eth.estimate_gas(tx)
-    except Exception:
-        logger.warning("Gas estimation failed, using default 500_000")
+        estimated = w3.eth.estimate_gas(tx)
+        tx["gas"] = int(estimated * GAS_BUFFER_MULTIPLIER)
+        logger.info(
+            "Gas: estimated=%s buffered=%s (%.0f%% margin)",
+            estimated,
+            tx["gas"],
+            (GAS_BUFFER_MULTIPLIER - 1) * 100,
+        )
+    except Exception as e:
+        logger.warning("Gas estimation failed (%s), using default 500_000", e)
         tx["gas"] = 500_000
 
     # Fetch base fee from latest block for EIP-1559
