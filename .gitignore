@@ -29,3 +29,11 @@ agent-heap.db
 # Gas Town infrastructure (not part of the project)
 .beads/
 .claude/
+
+# Node / Hardhat
+node_modules/
+typechain-types/
+artifacts/
+cache/
+coverage/
+coverage.json
