@@ -1,32 +1,27 @@
-import os
+"""Signal generation node — creates deposit/withdraw signals with risk-adjusted amounts."""
+
 from typing import Any
-
-from risk.position_sizing import fixed_fraction
-
-
-def _get_capital() -> float:
-    """Read capital from env or DB, falling back to 50.0."""
-    env_val = os.getenv("CAPITAL")
-    if env_val is not None:
-        return float(env_val)
-    try:
-        from db.session import get_agent_state
-
-        state = get_agent_state()
-        if state and state.config and "capital" in state.config:
-            return float(state.config["capital"])
-    except Exception:
-        pass
-    return 50.0
 
 
 def generate_signal(state: dict[str, Any]) -> dict[str, Any]:
+    """Generate a trading signal from analysis + risk checks."""
     analysis = state.get("analysis")
     if not analysis:
         return {**state, "signal": None}
 
-    capital = _get_capital()
-    amount = fixed_fraction(capital)
+    # Respect risk check — if blocked, no signal
+    if not state.get("risk_ok", True):
+        return {
+            **state,
+            "signal": {
+                "action": "skip",
+                "reason": state.get("risk_reason", "risk check failed"),
+                "amount": 0,
+            },
+        }
+
+    # Use risk-sized amount, fallback to default
+    amount = state.get("sized_amount", 0.01)
 
     signal = {
         "action": "deposit",

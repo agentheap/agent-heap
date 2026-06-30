@@ -4,6 +4,8 @@ from agent.nodes.analyzer import analyze
 from agent.nodes.collector import collect_yields
 from agent.nodes.executor import execute
 from agent.nodes.signal import generate_signal
+from agent.nodes.risk_check import check_risks, record_pnl
+from agent.nodes.buyback import run_buyback
 from data.defillama import get_yields
 from risk.circuit_breaker import CircuitBreaker
 from risk.position_sizing import kelly_fraction
@@ -33,10 +35,11 @@ def test_analyzer_returns_none_on_empty():
 
 def test_signal_generation(sample_yields):
     best = max(sample_yields, key=lambda p: p["apy"])
-    state = {"yields": sample_yields, "analysis": best, "signal": None}
+    state = {"yields": sample_yields, "analysis": best, "signal": None, "risk_ok": True, "sized_amount": 0.02}
     result = generate_signal(state)
     assert result["signal"]["action"] == "deposit"
     assert result["signal"]["protocol"] == "morpho"
+    assert result["signal"]["amount"] == 0.02
 
 
 def test_executor():
@@ -99,3 +102,35 @@ def test_slippage_rejected():
         pool_liquidity=1_000, trade_amount=500, max_slippage_bps=100
     )
     assert ok is False
+
+
+def test_risk_check_passes(sample_yields):
+    best = max(sample_yields, key=lambda p: p["apy"])
+    state = {
+        "yields": sample_yields,
+        "analysis": best,
+        "capital": 1.0,
+        "signal": {"amount": 0.01},
+    }
+    result = check_risks(state)
+    assert result.get("risk_ok") is True
+    assert result.get("sized_amount", 0) > 0
+
+
+def test_risk_check_blocks_empty():
+    result = check_risks({"analysis": None})
+    assert result.get("risk_ok") is False
+
+
+def test_buyback_with_profit():
+    state = {"tx_result": {"pnl": 0.01}}
+    result = run_buyback(state)
+    assert result.get("buyback") is not None
+    assert result["buyback"].get("amount", 0) > 0
+
+
+def test_buyback_no_profit():
+    state = {"tx_result": {"pnl": 0}}
+    result = run_buyback(state)
+    assert result.get("buyback") is not None
+    assert result["buyback"].get("status") == "no_profits"

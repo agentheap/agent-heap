@@ -3,7 +3,7 @@ from typing import Any
 from data.defillama import get_yields
 
 TARGET_PROTOCOLS = ["aave", "compound", "morpho"]
-TARGET_CHAINS = {"Arbitrum", "Arbitrum Nova"}
+TARGET_CHAINS = {"Arbitrum", "Arbitrum Nova", "Base"}
 
 
 def collect_yields(state: dict[str, Any]) -> dict[str, Any]:
