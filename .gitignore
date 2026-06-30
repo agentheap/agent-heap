@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Generated data (contains private keys)
+data/
+data/agent_wallet.json
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime
+.runtime/
+agent-heap.db
+
+# Gas Town infrastructure (not part of the project)
+.beads/
+.claude/
+
+# Node / Hardhat
+node_modules/
+typechain-types/
+artifacts/
+cache/
+coverage/
+coverage.json
+# Python cache
+__pycache__/
