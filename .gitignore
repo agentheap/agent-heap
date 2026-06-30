@@ -37,3 +37,5 @@ artifacts/
 cache/
 coverage/
 coverage.json
+# Python cache
+__pycache__/
