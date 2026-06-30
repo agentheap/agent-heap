@@ -1,10 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+typechain-types/
+artifacts/
+cache/
+coverage/
+coverage.json
+dist/
+
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 *.egg-info/
-dist/
-build/
-*.egg
+*.db
 
 # Generated data (contains private keys)
 data/
@@ -50,3 +60,6 @@ GEMINI.md
 
 # Chroma vector DB (auto-generated cache)
 chroma_data/
+
+# Local config
+.ralph/
