@@ -14,7 +14,7 @@ def analyze(state: dict[str, Any]) -> dict[str, Any]:
     if not yields:
         return {**state, "analysis": None}
 
-    nvidia_key = os.getenv("NVIDIA_NIM_API_KEY")
+    nvidia_key = os.getenv("LLM_API_KEY") or os.getenv("NVIDIA_NIM_API_KEY")
 
     if nvidia_key:
         try:
