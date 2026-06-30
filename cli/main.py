@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from agent.graph import run_agent
+from agent.memory.vector_store import AgentMemory
 from db.session import get_recent_trades, get_agent_state, save_trade, set_agent_status
 
 load_dotenv()
@@ -103,6 +104,44 @@ def history():
             t.token,
             str(t.amount),
             str(t.timestamp) if t.timestamp else "",
+        )
+    console.print(table)
+
+
+@cli.command()
+def memory():
+    """Show recent vector memory entries."""
+    try:
+        mem = AgentMemory()
+        all_entries = mem.collection.get()
+    except Exception:
+        console.print("[red]Could not connect to Chroma vector store[/red]")
+        return
+
+    if not all_entries["ids"]:
+        console.print("[yellow]No memory entries yet[/yellow]")
+        return
+
+    entries = [
+        dict(m) for m in (all_entries["metadatas"] or [])
+        if m is not None
+    ]
+
+    table = Table(title="Vector Memory (last 10)")
+    table.add_column("#", style="dim")
+    table.add_column("Action")
+    table.add_column("Protocol")
+    table.add_column("Pool")
+    table.add_column("Amount", justify="right")
+    table.add_column("Reason")
+    for i, m in enumerate(entries[-10:], 1):
+        table.add_row(
+            str(i),
+            str(m.get("action", "")),
+            str(m.get("protocol", "")),
+            str(m.get("pool", "")),
+            str(m.get("amount", "")),
+            str(m.get("reason", ""))[:50],
         )
     console.print(table)
 

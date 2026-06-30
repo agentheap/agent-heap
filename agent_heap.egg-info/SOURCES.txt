@@ -28,6 +28,7 @@ data/coingecko.py
 data/defillama.py
 db/__init__.py
 db/schema.py
+db/session.py
 heap_token/__init__.py
 heap_token/buyback.py
 heap_token/deploy.py
