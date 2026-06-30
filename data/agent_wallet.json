@@ -1,0 +1,8 @@
+{
+  "address": "0x608fF2AB930475B3301C4061c0E8018cC15A2cBC",
+  "private_key": "0x4d5a7eec7fd07a1668fe9c95fd6b7ca0a0b9feddeb212949e2d9674d62f04260",
+  "network": "Arbitrum Sepolia (testnet)",
+  "chain_id": 421614,
+  "rpc_url": "https://sepolia-rollup.arbitrum.io/rpc",
+  "notes": "TESTNET WALLET \u2014 for Agent Heap testnet operations.\nFund with testnet ETH from Arbitrum Sepolia faucet:\n  https://faucet.quicknode.com/arbitrum/sepolia\n  https://www.alchemy.com/faucets/arbitrum-sepolia\n  https://bwarelabs.com/faucets/arbitrum-sepolia\n\nGet testnet USDC on Arbitrum Sepolia via Circle faucet:\n  https://faucet.circle.com/\n"
+}
