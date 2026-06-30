@@ -60,4 +60,19 @@ def generate_signal(state: dict[str, Any]) -> dict[str, Any]:
         "tvl": analysis.get("tvl"),
         "reason": analysis.get("reason", "highest apy"),
     }
+
+    # Annotate signal with past-decisions count for the same protocol
+    memory = state.get("memory_context", [])
+    past_same_protocol = [
+        m
+        for m in memory
+        if m.get("protocol") == analysis.get("protocol")
+    ]
+    if past_same_protocol:
+        signal["previous_decisions"] = len(past_same_protocol)
+        signal["memory_note"] = (
+            f"{len(past_same_protocol)} past decisions for "
+            f"{analysis.get('protocol')}"
+        )
+
     return {**state, "signal": signal}

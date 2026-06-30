@@ -115,7 +115,6 @@ def history():
     console.print(table)
 
 
-<<<<<<< HEAD
 @cli.group()
 def wallet():
     """Wallet management commands."""

@@ -43,10 +43,28 @@ def execute(state: dict[str, Any]) -> dict[str, Any]:
 
     Accepts a signal (action + protocol + pool + amount) and either
     simulates or executes the corresponding deposit transaction.
+
+    Memory context can flag protocols that previously failed or
+    succeeded, guiding the execution path.
     """
     signal = state.get("signal")
     if not signal:
         return {**state, "tx_result": None}
+
+    # Check memory for known failures on this protocol
+    memory = state.get("memory_context", [])
+    failed_before = any(
+        m.get("protocol") == signal.get("protocol")
+        and m.get("simulated") is True
+        and "error" in m
+        for m in memory
+    )
+    if failed_before:
+        logger.warning(
+            "Protocol %s has prior failures in memory — simulating",
+            signal.get("protocol"),
+        )
+        return _simulate(state, signal, memory_warning="prior failure in memory")
 
     # Slippage gate: reject trades that would exceed max slippage.
     pool_data = {"tvl": signal.get("tvl", 0)}
@@ -72,7 +90,11 @@ def execute(state: dict[str, Any]) -> dict[str, Any]:
 # ── Public helpers (for testing) ────────────────────────────────────
 
 
-def _simulate(state: dict[str, Any], signal: dict[str, Any]) -> dict[str, Any]:
+def _simulate(
+    state: dict[str, Any],
+    signal: dict[str, Any],
+    memory_warning: str | None = None,
+) -> dict[str, Any]:
     tx_result = {
         "simulated": True,
         "action": signal["action"],
@@ -83,6 +105,8 @@ def _simulate(state: dict[str, Any], signal: dict[str, Any]) -> dict[str, Any]:
         "gas_cost": 0,
         "reason": signal.get("reason"),
     }
+    if memory_warning:
+        tx_result["memory_warning"] = memory_warning
     return {**state, "tx_result": tx_result}
 
 

@@ -23,9 +23,7 @@ def _format_memory_section(memory_entries: list[dict[str, Any]]) -> str:
         pool = entry.get("pool", "?")
         reason = entry.get("reason", "?")
         lines.append(f"  {i}. {action} on {protocol}/{pool} — {reason}")
-    lines.append(
-        "Consider what worked before when selecting the best pool."
-    )
+    lines.append("Consider what worked before when selecting the best pool.")
     return "\n".join(lines)
 
 
@@ -34,20 +32,22 @@ def analyze(state: dict[str, Any]) -> dict[str, Any]:
     if not yields:
         return {**state, "analysis": None}
 
-    # Pre-analysis context: query Chroma for similar past decisions
-    memory_text = ""
-    try:
-        mem = AgentMemory()
-        pool_names = [p.get("pool", "") for p in yields[:5]]
-        query = (
-            f"yield optimization {' '.join(pool_names)}"
-            if pool_names
-            else "yield optimization"
-        )
-        past_decisions = mem.query_similar(query, k=3)
-        memory_text = _format_memory_section(past_decisions)
-    except Exception:
-        pass
+    # Use memory context injected via state; fall back to live Chroma query
+    memory_entries: list[dict[str, Any]] = state.get("memory_context", [])
+    if not memory_entries:
+        try:
+            mem = AgentMemory(path=state.get("memory_path"))
+            pool_names = [p.get("pool", "") for p in yields[:5]]
+            query = (
+                f"yield optimization {' '.join(pool_names)}"
+                if pool_names
+                else "yield optimization"
+            )
+            memory_entries = mem.query_similar(query, k=3)
+        except Exception:
+            memory_entries = []
+
+    memory_text = _format_memory_section(memory_entries)
 
     nvidia_key = os.getenv("NVIDIA_NIM_API_KEY")
 

@@ -16,6 +16,8 @@ class AgentState(TypedDict):
     signal: dict[str, Any] | None
     tx_result: dict[str, Any] | None
     errors: list[str]
+    memory_context: list[dict[str, Any]]
+    memory_path: str
 
 
 _breaker = CircuitBreaker()
@@ -28,7 +30,8 @@ def _cb_router(state: AgentState) -> Literal["executor", "__end__"]:
     return "executor"
 
 
-def run_agent() -> dict[str, Any]:
+def build_graph_graph() -> StateGraph:
+    """Build the LangGraph state machine for the yield-optimization agent."""
     builder = StateGraph(AgentState)
     builder.add_node("collector", collect_yields)
     builder.add_node("analyzer", analyze)
@@ -38,7 +41,23 @@ def run_agent() -> dict[str, Any]:
     builder.add_edge("collector", "analyzer")
     builder.add_edge("analyzer", "signaler")
     builder.add_conditional_edges("signaler", _cb_router)
-    graph = builder.compile()
+    return builder.compile()
+
+
+def run_agent(
+    memory_path: str | None = None,
+) -> dict[str, Any]:
+    """Execute one full agent loop with Chroma-backed memory.
+
+    Parameters
+    ----------
+    memory_path :
+        Optional override path for the Chroma persistent directory.
+    """
+    mem = AgentMemory(path=memory_path)
+    memory_context = mem.query_similar("yield optimization", k=5)
+
+    graph = build_graph_graph()
     result = graph.invoke(
         {
             "yields": [],
@@ -46,30 +65,45 @@ def run_agent() -> dict[str, Any]:
             "signal": None,
             "tx_result": None,
             "errors": [],
+            "memory_context": memory_context,
+            "memory_path": mem.path,
         }
     )
 
-    # Post-execution store: persist decision metadata to Chroma
+    # Post-execution: persist decision metadata to Chroma
     tx = result.get("tx_result")
-    signal = result.get("signal")
     if tx:
-        # Record trade with circuit breaker (0 PnL for simulation)
         _breaker.record_trade(0.0)
-        mem = AgentMemory()
-        mem.store_decision(
-            {
-                "action": tx.get("action"),
-                "protocol": tx.get("protocol"),
-                "pool": tx.get("pool"),
-                "amount": tx.get("amount"),
-                "reason": signal.get("reason") if signal else None,
-                "apy": signal.get("apy") if signal else None,
-                "tvl": signal.get("tvl") if signal else None,
-                "simulated": tx.get("simulated"),
-            }
-        )
+
+    store_decision_from_result(mem, result)
 
     return result
+
+
+def store_decision_from_result(mem: AgentMemory, result: dict[str, Any]) -> None:
+    """Extract a decision from the graph result and store it in Chroma."""
+    tx = result.get("tx_result")
+    signal = result.get("signal")
+    if not tx:
+        return
+
+    decision: dict[str, Any] = {
+        "action": tx.get("action"),
+        "protocol": tx.get("protocol"),
+        "pool": tx.get("pool"),
+        "amount": tx.get("amount"),
+        "reason": signal.get("reason") if signal else None,
+        "apy": signal.get("apy") if signal else None,
+        "tvl": signal.get("tvl") if signal else None,
+        "simulated": tx.get("simulated"),
+    }
+
+    # Add any error info if present
+    errors = result.get("errors", [])
+    if errors:
+        decision["errors"] = errors
+
+    mem.store_decision(decision)
 
 
 agent_graph = run_agent
