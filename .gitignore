@@ -16,3 +16,5 @@ PROFILE_README.md
 agent-heap.db
 *.egg-info/
 agent_heap.egg-info/
+/agent-heap
+node_modules/
