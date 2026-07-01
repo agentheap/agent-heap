@@ -10,12 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/heapchain/agent-heap/actions"><img src="https://img.shields.io/badge/tests-24%20passing-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
-  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
-  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/LangGraph-✓-8b5cf6?style=for-the-badge" alt="LangGraph"></a>
-  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/MIT-green?style=for-the-badge" alt="MIT"></a>
-  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/Arbitrum-Sepolia%20%7C%20Mainnet-blue?style=for-the-badge&logo=arbitrum" alt="Arbitrum"></a>
-  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/LiteLLM-100%2B%20models-FF6F61?style=for-the-badge" alt="LiteLLM"></a>
+  <a href="https://github.com/agentheap/agent-heap/actions"><img src="https://img.shields.io/badge/tests-24%20passing-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="https://github.com/agentheap/agent-heap"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
+  <a href="https://github.com/agentheap/agent-heap"><img src="https://img.shields.io/badge/LangGraph-✓-8b5cf6?style=for-the-badge" alt="LangGraph"></a>
+  <a href="https://github.com/agentheap/agent-heap"><img src="https://img.shields.io/badge/MIT-green?style=for-the-badge" alt="MIT"></a>
+  <a href="https://github.com/agentheap/agent-heap"><img src="https://img.shields.io/badge/Arbitrum-Sepolia%20%7C%20Mainnet-blue?style=for-the-badge&logo=arbitrum" alt="Arbitrum"></a>
+  <a href="https://github.com/agentheap/agent-heap"><img src="https://img.shields.io/badge/LiteLLM-100%2B%20models-FF6F61?style=for-the-badge" alt="LiteLLM"></a>
 </p>
 
 **Agent Heap** is a LangGraph-powered agent that continuously monitors DeFi lending protocols (Aave, Compound, Morpho) on Arbitrum, analyzes yields via LLM reasoning, executes deposits using Kelly-criterion position sizing, and manages a HEAP token buyback loop — all autonomously.
@@ -35,7 +35,7 @@
 ## Quick start
 
 ```bash
-git clone https://github.com/heapchain/agent-heap.git
+git clone https://github.com/agentheap/agent-heap.git
 cd agent-heap
 uv sync
 cp .env.example .env
