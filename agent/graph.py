@@ -1,70 +1,109 @@
-"""Agent Heap — LangGraph state machine.
-
-Flow:
-  collector → analyzer → risk_check → signaler → executor → record_pnl → buyback
-"""
-
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from langgraph.graph import StateGraph
 
+from agent.memory.vector_store import AgentMemory
 from agent.nodes.collector import collect_yields
 from agent.nodes.analyzer import analyze
-from agent.nodes.risk_check import check_risks, record_pnl
 from agent.nodes.signal import generate_signal
 from agent.nodes.executor import execute
-from agent.nodes.buyback import run_buyback
+from risk.circuit_breaker import CircuitBreaker
 
 
 class AgentState(TypedDict):
     yields: list[dict[str, Any]]
     analysis: dict[str, Any] | None
-    risk_ok: bool
-    risk_reason: str
-    sized_amount: float
-    capital: float
     signal: dict[str, Any] | None
     tx_result: dict[str, Any] | None
-    buyback: dict[str, Any] | None
     errors: list[str]
+    memory_context: list[dict[str, Any]]
+    memory_path: str
 
 
-def run_agent(capital: float = 1.0) -> dict[str, Any]:
-    """Run the agent with a given capital amount in ETH."""
+_breaker = CircuitBreaker()
+
+
+def _cb_router(state: AgentState) -> Literal["executor", "__end__"]:
+    """Route to executor if circuit breaker is not tripped, otherwise skip."""
+    if _breaker.is_tripped():
+        return "__end__"
+    return "executor"
+
+
+def build_graph_graph() -> StateGraph:
+    """Build the LangGraph state machine for the yield-optimization agent."""
     builder = StateGraph(AgentState)
     builder.add_node("collector", collect_yields)
     builder.add_node("analyzer", analyze)
-    builder.add_node("risk_check", check_risks)
     builder.add_node("signaler", generate_signal)
     builder.add_node("executor", execute)
-    builder.add_node("record_pnl", record_pnl)
-    builder.add_node("buyback", run_buyback)
-
     builder.set_entry_point("collector")
-
     builder.add_edge("collector", "analyzer")
-    builder.add_edge("analyzer", "risk_check")
-    builder.add_edge("risk_check", "signaler")
-    builder.add_edge("signaler", "executor")
-    builder.add_edge("executor", "record_pnl")
-    builder.add_edge("record_pnl", "buyback")
+    builder.add_edge("analyzer", "signaler")
+    builder.add_conditional_edges("signaler", _cb_router)
+    return builder.compile()
 
-    graph = builder.compile()
 
-    return graph.invoke(
+def run_agent(
+    memory_path: str | None = None,
+) -> dict[str, Any]:
+    """Execute one full agent loop with Chroma-backed memory.
+
+    Parameters
+    ----------
+    memory_path :
+        Optional override path for the Chroma persistent directory.
+    """
+    mem = AgentMemory(path=memory_path)
+    memory_context = mem.query_similar("yield optimization", k=5)
+
+    graph = build_graph_graph()
+    result = graph.invoke(
         {
             "yields": [],
             "analysis": None,
-            "risk_ok": True,
-            "risk_reason": "",
-            "sized_amount": 0.0,
-            "capital": capital,
             "signal": None,
             "tx_result": None,
-            "buyback": None,
             "errors": [],
+            "memory_context": memory_context,
+            "memory_path": mem.path,
         }
     )
+
+    # Post-execution: persist decision metadata to Chroma
+    tx = result.get("tx_result")
+    if tx:
+        _breaker.record_trade(0.0)
+
+    store_decision_from_result(mem, result)
+
+    return result
+
+
+def store_decision_from_result(mem: AgentMemory, result: dict[str, Any]) -> None:
+    """Extract a decision from the graph result and store it in Chroma."""
+    tx = result.get("tx_result")
+    signal = result.get("signal")
+    if not tx:
+        return
+
+    decision: dict[str, Any] = {
+        "action": tx.get("action"),
+        "protocol": tx.get("protocol"),
+        "pool": tx.get("pool"),
+        "amount": tx.get("amount"),
+        "reason": signal.get("reason") if signal else None,
+        "apy": signal.get("apy") if signal else None,
+        "tvl": signal.get("tvl") if signal else None,
+        "simulated": tx.get("simulated"),
+    }
+
+    # Add any error info if present
+    errors = result.get("errors", [])
+    if errors:
+        decision["errors"] = errors
+
+    mem.store_decision(decision)
 
 
 agent_graph = run_agent

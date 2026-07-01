@@ -1,27 +1,55 @@
-"""Signal generation node — creates deposit/withdraw signals with risk-adjusted amounts."""
-
+import os
 from typing import Any
+
+from risk.position_sizing import kelly_fraction
+
+
+def _get_capital() -> float:
+    """Read capital from env or DB, falling back to 50.0."""
+    env_val = os.getenv("CAPITAL")
+    if env_val is not None:
+        return float(env_val)
+    try:
+        from db.session import get_agent_state
+
+        state = get_agent_state()
+        if state and state.config and "capital" in state.config:
+            return float(state.config["capital"])
+    except Exception:
+        pass
+    return 50.0
+
+
+def _compute_kelly_amount(
+    apy: float,
+    yields: list[dict[str, Any]],
+    capital: float,
+) -> float:
+    """Derive win probability and ratio from APY data, then compute Kelly fraction."""
+    if not yields or capital <= 0:
+        return capital * 0.02
+
+    avg_apy = sum(p["apy"] for p in yields) / len(yields)
+    if avg_apy <= 0:
+        return capital * 0.02
+
+    win_prob = min(0.99, max(0.01, apy / (apy + avg_apy)))
+    win_ratio = apy / avg_apy
+    f = kelly_fraction(win_prob, win_ratio)
+    return capital * f
 
 
 def generate_signal(state: dict[str, Any]) -> dict[str, Any]:
-    """Generate a trading signal from analysis + risk checks."""
     analysis = state.get("analysis")
     if not analysis:
         return {**state, "signal": None}
 
-    # Respect risk check — if blocked, no signal
-    if not state.get("risk_ok", True):
-        return {
-            **state,
-            "signal": {
-                "action": "skip",
-                "reason": state.get("risk_reason", "risk check failed"),
-                "amount": 0,
-            },
-        }
-
-    # Use risk-sized amount, fallback to default
-    amount = state.get("sized_amount", 0.01)
+    capital = _get_capital()
+    amount = _compute_kelly_amount(
+        apy=analysis.get("apy", 0),
+        yields=state.get("yields", []),
+        capital=capital,
+    )
 
     signal = {
         "action": "deposit",
@@ -32,4 +60,19 @@ def generate_signal(state: dict[str, Any]) -> dict[str, Any]:
         "tvl": analysis.get("tvl"),
         "reason": analysis.get("reason", "highest apy"),
     }
+
+    # Annotate signal with past-decisions count for the same protocol
+    memory = state.get("memory_context", [])
+    past_same_protocol = [
+        m
+        for m in memory
+        if m.get("protocol") == analysis.get("protocol")
+    ]
+    if past_same_protocol:
+        signal["previous_decisions"] = len(past_same_protocol)
+        signal["memory_note"] = (
+            f"{len(past_same_protocol)} past decisions for "
+            f"{analysis.get('protocol')}"
+        )
+
     return {**state, "signal": signal}

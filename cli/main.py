@@ -2,6 +2,7 @@ import os
 import signal
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import click
 from dotenv import load_dotenv
@@ -9,7 +10,14 @@ from rich.console import Console
 from rich.table import Table
 
 from agent.graph import run_agent
+from agent.memory.vector_store import AgentMemory
+from chains.arbitrum import ARBITRUM_NETWORK
 from db.session import get_recent_trades, get_agent_state, save_trade, set_agent_status
+from wallet.generator import (
+    check_balance,
+    generate_wallet,
+    print_funding_instructions,
+)
 
 load_dotenv()
 console = Console()
@@ -42,38 +50,20 @@ def start(interval: int):
 
     while running:
         try:
-            result = run_agent(capital=0.022)  # wallet balance on Base Sepolia
+            result = run_agent()
             ts = datetime.now(timezone.utc).isoformat()
             console.print(f"[blue]{ts}[/blue] Agent run complete")
 
-            # Show risk
-            console.print(f"  Risk: {result.get('risk_reason', 'ok')} "
-                          f"| Sized: {result.get('sized_amount', 0):.4f} ETH")
-
-            # Show signal
-            signal = result.get("signal")
-            if signal:
-                console.print(f"  Signal: {signal.get('action')} @ {signal.get('protocol','?')} "
-                              f"| {signal.get('amount', 0):.4f} {signal.get('pool','?')}")
-
-            # Show tx
             tx = result.get("tx_result")
             if tx:
-                pnl = tx.get("pnl", 0)
-                status = "[green]OK[/green]" if pnl > 0 else "[yellow]simulated[/yellow]"
-                console.print(f"  TX: {status} | PnL: ${pnl:.4f} | "
-                              f"Protocol: {tx.get('protocol','?')}")
-
-                # Show buyback
-                buyback = tx.get("buyback") or result.get("buyback")
-                if buyback and buyback.get("amount", 0) > 0:
-                    console.print(f"  Buyback: [green]${buyback['amount']:.4f} → HEAP[/green] "
-                                  f"| {buyback.get('status','')}")
+                console.print(
+                    f"  Action: {tx['action']} | Protocol: {tx['protocol']} | Pool: {tx['pool']}"
+                )
                 save_trade(
-                    action=tx.get("action", "deposit"),
+                    action=tx["action"],
                     amount=tx.get("amount", 0),
                     token=tx.get("pool", "unknown"),
-                    simulated_pnl=pnl,
+                    simulated_pnl=0,
                 )
 
             for _ in range(int(interval / 0.5)):
@@ -125,16 +115,110 @@ def history():
     console.print(table)
 
 
+@cli.group()
+def wallet():
+    """Wallet management commands."""
+    pass
+
+
+@wallet.command()
+@click.option(
+    "--output", "-o", default=None, help="Write wallet JSON to this file path"
+)
+def generate(output: str | None):
+    """Generate a fresh wallet for the active Arbitrum network.
+
+    Uses ARBITRUM_NETWORK env var (default: sepolia) to determine the target network.
+    """
+    network_label = "Arbitrum One mainnet" if ARBITRUM_NETWORK == "mainnet" else "Arbitrum Sepolia"
+    console.print(f"[bold]Generating wallet for {network_label}...[/bold]")
+
+    wallet = generate_wallet(output_path=output)
+
+    console.print(f"[green]✓[/green] Wallet address: [bold]{wallet.address}[/bold]")
+
+    if output:
+        abs_path = Path(output).resolve()
+        console.print(f"[green]✓[/green] Wallet saved to: [bold]{abs_path}[/bold]")
+        console.print("    [yellow]⚠ Keep this file secure![/yellow]")
+
+    print_funding_instructions(wallet)
+
+
+@wallet.command()
+def balance():
+    """Check the balance of the configured wallet.
+
+    Reads PRIVATE_KEY from environment and queries the current network.
+    """
+    result = check_balance()
+
+    if "error" in result:
+        console.print(f"[red]Error:[/red] {result['error']}")
+        console.print("\n[yellow]Set PRIVATE_KEY in your environment to check balance.[/yellow]")
+        return
+
+    table = Table(title=f"Wallet Balance ({result['network']})")
+    table.add_column("Asset", style="cyan")
+    table.add_column("Balance", style="white")
+    table.add_row("Address", result.get("address", "unknown"))
+    table.add_row("ETH", f"{result['eth']:.6f}")
+    console.print(table)
+
+
+@wallet.command()
+@click.option("--output", "-o", default=None, help="Write wallet JSON to this file path")
+def new(output: str | None):
+    """Alias for 'wallet generate' — create a new wallet and print funding instructions."""
+    network_label = "Arbitrum One mainnet" if ARBITRUM_NETWORK == "mainnet" else "Arbitrum Sepolia"
+    console.print(f"[bold]Generating wallet for {network_label}...[/bold]")
+
+    wallet = generate_wallet(output_path=output)
+
+    console.print(f"[green]✓[/green] Wallet address: [bold]{wallet.address}[/bold]")
+
+    if output:
+        abs_path = Path(output).resolve()
+        console.print(f"[green]✓[/green] Wallet saved to: [bold]{abs_path}[/bold]")
+
+    print_funding_instructions(wallet)
+
+
 @cli.command()
-@click.option("--testnet", is_flag=True, help="Deploy on Base Sepolia (free)")
-@click.option("--mainnet", is_flag=True, help="Deploy on Base mainnet")
-@click.option("--clanker", is_flag=True, help="Deploy via Clanker REST API")
-@click.option("--admin", default=None, help="Admin address (for Clanker deploy)")
-def deploy(testnet: bool, mainnet: bool, clanker: bool, admin: str | None) -> None:
-    """Deploy the $HEAP token on Base."""
-    from heap_token.deploy import deploy_heap as do_deploy
-    do_deploy.callback(testnet=testnet, mainnet=mainnet, clanker=clanker, admin=admin)
+def memory():
+    """Show recent vector memory entries."""
+    try:
+        mem = AgentMemory()
+        all_entries = mem.collection.get()
+    except Exception:
+        console.print("[red]Could not connect to Chroma vector store[/red]")
+        return
 
+    if not all_entries["ids"]:
+        console.print("[yellow]No memory entries yet[/yellow]")
+        return
 
+    entries = [
+        dict(m) for m in (all_entries["metadatas"] or [])
+        if m is not None
+    ]
+
+    table = Table(title="Vector Memory (last 10)")
+    table.add_column("#", style="dim")
+    table.add_column("Action")
+    table.add_column("Protocol")
+    table.add_column("Pool")
+    table.add_column("Amount", justify="right")
+    table.add_column("Reason")
+    for i, m in enumerate(entries[-10:], 1):
+        table.add_row(
+            str(i),
+            str(m.get("action", "")),
+            str(m.get("protocol", "")),
+            str(m.get("pool", "")),
+            str(m.get("amount", "")),
+            str(m.get("reason", ""))[:50],
+        )
+    console.print(table)
 if __name__ == "__main__":
     cli()
