@@ -1,0 +1,7 @@
+{
+  "address": "0x40a286e89C2fcB3f59131472c67Ff3f2Ad11E58f",
+  "chain_id": 421614,
+  "network": "Arbitrum Sepolia (testnet)",
+  "private_key": "0xf10a90866fc6e90322185d211a469d5ff938ed2efcad07856b1dec872a8ff598",
+  "rpc_url": "https://sepolia-rollup.arbitrum.io/rpc"
+}

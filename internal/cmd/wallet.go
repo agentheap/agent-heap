@@ -21,6 +21,9 @@ func init() {
 	walletCmd.AddCommand(walletGenerateCmd)
 	walletCmd.AddCommand(walletBalanceCmd)
 	walletCmd.AddCommand(walletNewCmd)
+
+	walletGenerateCmd.Flags().StringP("output", "o", "", "Write wallet JSON to file")
+	walletNewCmd.Flags().StringP("output", "o", "", "Write wallet JSON to file")
 }
 
 var walletGenerateCmd = &cobra.Command{
