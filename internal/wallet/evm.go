@@ -45,7 +45,13 @@ func Generate() (*Wallet, error) {
 
 // PrivateKeyToAddress derives the address from a hex-encoded private key.
 func PrivateKeyToAddress(privateKeyHex string) (string, error) {
-	privateKey, err := crypto.HexToECDSA(privateKeyHex)
+	// Strip 0x prefix if present
+	key := privateKeyHex
+	if len(key) > 2 && key[:2] == "0x" {
+		key = key[2:]
+	}
+
+	privateKey, err := crypto.HexToECDSA(key)
 	if err != nil {
 		return "", fmt.Errorf("parse private key: %w", err)
 	}
