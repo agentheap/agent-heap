@@ -1,5 +1,9 @@
 """HEAP token buyback engine.
 
+Provides both a stateless convenience function (``calculate_buyback``)
+used by the agent graph node, and a stateful ``BuybackEngine`` for
+production multi-cycle runs.
+
 When the agent accrues yield profits, the buyback loop:
   1. Checks accumulated profit against the buyback threshold
   2. Calculates HEAP tokens to buy (allocation_pct of profits)
@@ -11,6 +15,28 @@ When the agent accrues yield profits, the buyback loop:
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+
+def calculate_buyback(pnl: float, allocation_pct: float = 0.1, token_price: float = 0.01) -> dict:
+    """Stateless buyback calculation - returns a buyback dict for the agent node.
+
+    Args:
+        pnl: Profit (in USD) from the latest trade.
+        allocation_pct: Fraction of profit to allocate to buyback (default 10%).
+        token_price: Assumed HEAP token price in USD (default $0.01).
+
+    Returns:
+        Dict with ``amount`` (USD allocated), ``tokens`` (tokens to buy),
+        ``allocated`` (True/False), and ``status``.
+    """
+    amount = pnl * allocation_pct
+    tokens = amount / token_price if token_price > 0 else 0
+    return {
+        "amount": round(amount, 4),
+        "tokens": round(tokens, 4),
+        "allocated": amount > 0,
+        "status": "buyback" if amount > 0 else "no_profits",
+    }
 
 
 class BuybackAction(Enum):
@@ -87,7 +113,7 @@ class BuybackEngine:
         }
 
     def _swap_and_burn(self, amount_usd: float, tokens: float) -> str:
-        """Execute on-chain swap → burn. Requires live wallet."""
+        """Execute on-chain swap -> burn. Requires live wallet."""
         raise NotImplementedError(
             "Live buyback requires a funded wallet. "
             "Set simulated=True or implement _swap_and_burn."

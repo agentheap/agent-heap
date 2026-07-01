@@ -169,7 +169,7 @@ def balance():
 @wallet.command()
 @click.option("--output", "-o", default=None, help="Write wallet JSON to this file path")
 def new(output: str | None):
-    """Alias for 'wallet generate' — create a new wallet and print funding instructions."""
+    """Alias for 'wallet generate' -- create a new wallet and print funding instructions."""
     network_label = "Arbitrum One mainnet" if ARBITRUM_NETWORK == "mainnet" else "Arbitrum Sepolia"
     console.print(f"[bold]Generating wallet for {network_label}...[/bold]")
 

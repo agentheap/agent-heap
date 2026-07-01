@@ -1,4 +1,4 @@
-"""Buyback node — runs after each agent execution cycle.
+"""Buyback node -- runs after each agent execution cycle.
 
 Records simulated yield profit and triggers HEAP buyback when the threshold is met.
 """

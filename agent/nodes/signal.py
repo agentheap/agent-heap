@@ -45,11 +45,16 @@ def generate_signal(state: dict[str, Any]) -> dict[str, Any]:
         return {**state, "signal": None}
 
     capital = _get_capital()
-    amount = _compute_kelly_amount(
-        apy=analysis.get("apy", 0),
-        yields=state.get("yields", []),
-        capital=capital,
-    )
+    # Use pre-sized amount from risk check if available
+    sized_amount = state.get("sized_amount")
+    if sized_amount is not None and sized_amount > 0:
+        amount = sized_amount
+    else:
+        amount = _compute_kelly_amount(
+            apy=analysis.get("apy", 0),
+            yields=state.get("yields", []),
+            capital=capital,
+        )
 
     signal = {
         "action": "deposit",

@@ -39,7 +39,7 @@ _MIN_ALLOWANCE_FACTOR = 0.5
 
 
 def execute(state: dict[str, Any]) -> dict[str, Any]:
-    """Main executor entry point – called by the agent graph.
+    """Main executor entry point - called by the agent graph.
 
     Accepts a signal (action + protocol + pool + amount) and either
     simulates or executes the corresponding deposit transaction.
@@ -61,7 +61,7 @@ def execute(state: dict[str, Any]) -> dict[str, Any]:
     )
     if failed_before:
         logger.warning(
-            "Protocol %s has prior failures in memory — simulating",
+            "Protocol %s has prior failures in memory -- simulating",
             signal.get("protocol"),
         )
         return _simulate(state, signal, memory_warning="prior failure in memory")
@@ -197,7 +197,7 @@ def _build_morpho_deposit(amount_wei: int, sender: str) -> dict[str, Any]:
     """Build a Morpho Blue ``supply`` transaction.
 
     Uses empty ``MarketParams`` placeholders where real parameters would
-    come from an on-chain lookup or config – these must be resolved
+    come from an on-chain lookup or config - these must be resolved
     before the transaction is executable.
     """
     morpho_addr = PROTOCOL_ADDRESSES["morpho"]
@@ -206,7 +206,7 @@ def _build_morpho_deposit(amount_wei: int, sender: str) -> dict[str, Any]:
 
     # NOTE: MarketParams would normally be fetched from a market
     # registry or config.  The values below are placeholders that
-    # illustrate the shape of the struct – real on-chain calls must
+    # illustrate the shape of the struct - real on-chain calls must
     # supply the correct loanToken, collateralToken, oracle, IRM and
     # LLTV for the specific market.
     market_params = (
@@ -254,7 +254,7 @@ def _execute_real(
         _token_address = USDC
 
         if action != "deposit":
-            logger.warning("Unsupported action '%s' – simulating", action)
+            logger.warning("Unsupported action '%s' - simulating", action)
             return _simulate(state, signal)
 
         # ── Balance check (ETH for gas) ──────────────────────────────
@@ -265,7 +265,7 @@ def _execute_real(
         if balance_eth < min_gas_eth:
             msg = (
                 f"Insufficient ETH for gas on {network_label}: "
-                f"{balance_eth:.6f} ETH (need ≥ {min_gas_eth} ETH). "
+                f"{balance_eth:.6f} ETH (need >= {min_gas_eth} ETH). "
                 f"Fund wallet {sender} and retry."
             )
             logger.error(msg)
@@ -284,7 +284,7 @@ def _execute_real(
         amount_wei = _to_wei(w3, amount, _token_address)
         protocol_addr = PROTOCOL_ADDRESSES.get(protocol)
         if not protocol_addr:
-            logger.warning("Unknown protocol '%s' – simulating", protocol)
+            logger.warning("Unknown protocol '%s' - simulating", protocol)
             return _simulate(state, signal)
 
         # ── Approve step (token assets only, not native ETH) ──────

@@ -1,3 +1,8 @@
+"""Agent Heap graph -- LangGraph state machine for yield optimization.
+
+Pipeline: collector -> analyzer -> signaler -> executor -> buyback
+"""
+
 from typing import Any, Literal, TypedDict
 
 from langgraph.graph import StateGraph
@@ -7,7 +12,8 @@ from agent.nodes.collector import collect_yields
 from agent.nodes.analyzer import analyze
 from agent.nodes.signal import generate_signal
 from agent.nodes.executor import execute
-from agent.nodes.buyback_node import run_buyback
+from agent.nodes.buyback import run_buyback
+from risk.circuit_breaker import CircuitBreaker
 
 
 class AgentState(TypedDict):
@@ -31,8 +37,17 @@ def _cb_router(state: AgentState) -> Literal["executor", "__end__"]:
     return "executor"
 
 
-def build_graph_graph() -> StateGraph:
-    """Build the LangGraph state machine for the yield-optimization agent."""
+def _build_graph(
+    memory_context: list[dict[str, Any]] | None = None,
+    memory_path: str = "./chroma_data",
+) -> dict[str, Any]:
+    """Build, compile, and invoke the LangGraph state machine.
+
+    Returns the final state dict after a full pipeline run.
+    """
+    if memory_context is None:
+        memory_context = []
+
     builder = StateGraph(AgentState)
     builder.add_node("collector", collect_yields)
     builder.add_node("analyzer", analyze)
@@ -44,8 +59,9 @@ def build_graph_graph() -> StateGraph:
     builder.add_edge("analyzer", "signaler")
     builder.add_edge("signaler", "executor")
     builder.add_edge("executor", "buyback")
+
     graph = builder.compile()
-    return graph.invoke(
+    result = graph.invoke(
         {
             "yields": [],
             "analysis": None,
@@ -54,17 +70,9 @@ def build_graph_graph() -> StateGraph:
             "buyback_result": None,
             "errors": [],
             "memory_context": memory_context,
-            "memory_path": mem.path,
+            "memory_path": memory_path,
         }
     )
-
-    # Post-execution: persist decision metadata to Chroma
-    tx = result.get("tx_result")
-    if tx:
-        _breaker.record_trade(0.0)
-
-    store_decision_from_result(mem, result)
-
     return result
 
 
@@ -94,4 +102,24 @@ def store_decision_from_result(mem: AgentMemory, result: dict[str, Any]) -> None
     mem.store_decision(decision)
 
 
-agent_graph = run_agent
+def run_agent() -> dict[str, Any]:
+    """Run the full agent pipeline: collect -> analyze -> signal -> execute -> buyback.
+
+    Loads past memory context from ChromaDB, invokes the graph,
+    persists the new decision, and returns the result dict.
+    """
+    mem = AgentMemory()
+    past = mem.query_similar("yield optimization opportunity", k=3)
+
+    result = _build_graph(memory_context=past, memory_path=mem.path)
+
+    # Track PnL for circuit breaker
+    tx = result.get("tx_result")
+    if tx:
+        simulated_pnl = tx.get("simulated_pnl", 0.0)
+        _breaker.record_trade(simulated_pnl)
+
+    # Persist decision to vector memory
+    store_decision_from_result(mem, result)
+
+    return result

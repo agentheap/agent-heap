@@ -22,7 +22,7 @@ def _format_memory_section(memory_entries: list[dict[str, Any]]) -> str:
         protocol = entry.get("protocol", "?")
         pool = entry.get("pool", "?")
         reason = entry.get("reason", "?")
-        lines.append(f"  {i}. {action} on {protocol}/{pool} — {reason}")
+        lines.append(f"  {i}. {action} on {protocol}/{pool} -- {reason}")
     lines.append("Consider what worked before when selecting the best pool.")
     return "\n".join(lines)
 
@@ -31,6 +31,9 @@ def analyze(state: dict[str, Any]) -> dict[str, Any]:
     yields = state.get("yields", [])
     if not yields:
         return {**state, "analysis": None}
+
+    memory = state.get("memory_context", [])
+    memory_text = _format_memory_section(memory)
 
     model = os.getenv("LLM_MODEL")
     if model:
@@ -53,9 +56,11 @@ def _analyze_with_llm(
         f"{p['protocol']} / {p['pool']}: {p['apy']:.1f}% APY, ${p['tvl']:,.0f} TVL on {p['chain']}"
         for p in yields[:20]
     )
+    memory = state.get("memory_context", [])
+    memory_text = _format_memory_section(memory)
     response = completion(
         model=model,
-        messages=[{"role": "user", "content": ANALYST_PROMPT.format(pools=pool_lines)}],
+        messages=[{"role": "user", "content": ANALYST_PROMPT.format(pools=pool_lines, memory=memory_text)}],
         temperature=0.1,
     )
     content = response.choices[0].message.content.strip()
@@ -73,7 +78,7 @@ def _analyze_with_llm(
         if matched:
             return {**state, "analysis": {**matched[0], "reason": reason}}
 
-    return _analyze_fallback(state, yields, memory_text)
+    return _analyze_fallback(state, yields, memory_text or "")
 
 
 def _analyze_fallback(

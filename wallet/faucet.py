@@ -1,4 +1,4 @@
-"""Faucet guide and helper — get testnet ETH/USDC or mainnet funding for Agent Heap.
+"""Faucet guide and helper -- get testnet ETH/USDC or mainnet funding for Agent Heap.
 
 Respects the ARBITRUM_NETWORK env var ("sepolia" or "mainnet") to determine
 which network to show instructions for.
@@ -91,7 +91,7 @@ def print_status():
         return
 
     print(f"╔══════════════════════════════════════════╗")
-    print(f"║     Agent Heap — Wallet Status           ║")
+    print(f"║     Agent Heap -- Wallet Status           ║")
     print(f"╚══════════════════════════════════════════╝")
     print(f"\n📋 Wallet Address: {wallet['address']}")
     print(f"   Network: {wallet.get('network', 'Unknown')}")

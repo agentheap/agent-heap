@@ -1,4 +1,4 @@
-"""Wallet setup — generates a fresh agent wallet and outputs details.
+"""Wallet setup -- generates a fresh agent wallet and outputs details.
 
 Respects the ARBITRUM_NETWORK env var ("sepolia" or "mainnet") to determine
 which network the wallet is created for.
@@ -33,7 +33,7 @@ def generate_wallet(output_path: str | None = None) -> dict:
         chain_id = 42161
         rpc_url = "https://arb1.arbitrum.io/rpc"
         notes = (
-            "MAINNET WALLET — for Agent Heap mainnet operations.\n"
+            "MAINNET WALLET -- for Agent Heap mainnet operations.\n"
             "⚠️  THIS IS REAL MONEY. Be careful!\n\n"
             "Fund with real ETH from any exchange or bridge:\n"
             "  https://bridge.arbitrum.io/\n\n"
@@ -44,7 +44,7 @@ def generate_wallet(output_path: str | None = None) -> dict:
         chain_id = 421614
         rpc_url = "https://sepolia-rollup.arbitrum.io/rpc"
         notes = (
-            "TESTNET WALLET — for Agent Heap testnet operations.\n"
+            "TESTNET WALLET -- for Agent Heap testnet operations.\n"
             "Fund with testnet ETH from Arbitrum Sepolia faucet:\n"
             "  https://faucet.quicknode.com/arbitrum/sepolia\n"
             "  https://www.alchemy.com/faucets/arbitrum-sepolia\n"
