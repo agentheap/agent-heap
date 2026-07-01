@@ -1,4 +1,4 @@
-module github.com/heapchain/agent-heap
+module github.com/agentheap/agent-heap
 
 go 1.26
 

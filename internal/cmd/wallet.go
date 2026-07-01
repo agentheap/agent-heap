@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/heapchain/agent-heap/internal/wallet"
+	"github.com/agentheap/agent-heap/internal/wallet"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )

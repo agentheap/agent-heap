@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/heapchain/agent-heap/internal/agent"
-	"github.com/heapchain/agent-heap/internal/db"
+	"github.com/agentheap/agent-heap/internal/agent"
+	"github.com/agentheap/agent-heap/internal/db"
 	"github.com/spf13/cobra"
 )
 

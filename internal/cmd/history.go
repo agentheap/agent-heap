@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/heapchain/agent-heap/internal/db"
+	"github.com/agentheap/agent-heap/internal/db"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )

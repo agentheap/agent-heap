@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/heapchain/agent-heap/internal/cmd"
+	"github.com/agentheap/agent-heap/internal/cmd"
 )
 
 func main() {
