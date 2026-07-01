@@ -47,4 +47,6 @@ state.json
 CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
+
+# Chroma vector DB (auto-generated cache)
 chroma_data/
