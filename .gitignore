@@ -1,50 +1,18 @@
-# Dependencies
-node_modules/
-
-# Build artifacts
-typechain-types/
-artifacts/
-cache/
-coverage/
-coverage.json
-dist/
-
-# Infrastructure
-.beads/
+.runtime/
 .claude/
-.runtime/
-
-# ChromaDB persistent storage
-chroma_data/
-
-# Python
+.opencode/
+.logs/
 __pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-*.db
-.venv/
-.pytest_cache/
-
-# Generated data (contains private keys)
-data/
-data/agent_wallet.json
-
-# Environment
+state.json
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+.beads/
 .env
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Runtime
-.runtime/
+*.db
+chroma_data/
+PROFILE_README.md
+.ralph/
+agent-heap.db
+*.egg-info/
+agent_heap.egg-info/

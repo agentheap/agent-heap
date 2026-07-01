@@ -4,9 +4,8 @@ version = "0.1.0"
 description = "Multi-chain yield optimization AI agent"
 requires-python = ">=3.11"
 dependencies = [
-    "langchain>=0.3",
+    "litellm>=1.60",
     "langgraph>=0.2",
-    "langchain-nvidia-ai-endpoints>=0.3",
     "web3>=7.0",
     "chromadb>=0.5",
     "sqlalchemy>=2.0",

@@ -1,118 +1,81 @@
-# Agent Heap
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/Tests-18%20passing-brightgreen.svg)](tests/)
-[![Base Sepolia](https://img.shields.io/badge/Blockchain-Base%20Sepolia-0052FF.svg)](https://sepolia.basescan.org/address/0x93b4C000ec98474ECacf619bec969bd9bBbd87f7)
-[![Contract](https://img.shields.io/badge/$HEAP-ERC20-8247E5.svg)](https://sepolia.basescan.org/address/0x93b4C000ec98474ECacf619bec969bd9bBbd87f7)
-
-> **Autonomous AI agent for multi-chain yield optimization.**
->
-> Collects live yields from DeFiLlama, analyzes them via LLM, executes deposits on-chain.
-> Built entirely by AI agents — orchestrated by Gas Town, implemented by Claude Code.
-
----
-
-## 🧠 Architecture
-
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│ Collector │───▶│ Analyzer │───▶│Risk Check│───▶│ Signaler │───▶│ Executor │───▶│ Buyback  │
-│ DeFiLlama │    │  LLM     │    │ Kelly/CB │    │  Signal  │    │  web3.py │    │  → HEAP  │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
-```
-
-A **LangGraph state machine** with 6 nodes. Each run collects, analyzes, risk-checks, signals, executes, and buybacks — fully autonomous.
-
----
-
-## ✨ Features
-
-| Module | What It Does | Status |
-|--------|-------------|--------|
-| **DeFiLlama Feed** | Fetches live APYs for Aave, Compound, Morpho on Arbitrum & Base | ✅ |
-| **LLM Analysis** | NVIDIA NIM (Mistral-7B) picks best risk-adjusted pool | ✅ |
-| **Position Sizing** | Kelly criterion + fixed-fraction capital allocation | ✅ |
-| **Circuit Breaker** | Halts trading after 5% daily drawdown | ✅ |
-| **Slippage Guard** | Rejects trades exceeding 100bps slippage | ✅ |
-| **Vector Memory** | ChromaDB recall of past decisions for context | ✅ |
-| **CLI Loop** | `agent-heap start --interval 21600` — runs forever | ✅ |
-| **$HEAP Token** | ERC20 with buyback mechanism (1B supply) | ✅ |
-| **Test Suite** | 18 passing tests across all modules | ✅ |
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Install
-git clone https://github.com/heapchain/agent-heap
-cd agent-heap
-pip install -e .
-
-# Configure
-cp .env.example .env
-# Add your WALLET_PRIVATE_KEY and RPC endpoints
-
-# Run (single pass)
-agent-heap start --interval 1
-
-# Run (6h loop)
-agent-heap start --interval 21600
-
-# Check status
-agent-heap status
-agent-heap history
-```
-
----
-
-## 🪙 $HEAP Token
-
-Deployed on **Base Sepolia**:
-
-| Field | Value |
-|-------|-------|
-| **Contract** | [`0x93b4C0...87f7`](https://sepolia.basescan.org/address/0x93b4C000ec98474ECacf619bec969bd9bBbd87f7) |
-| **Name** | Agent Heap |
-| **Symbol** | $HEAP |
-| **Supply** | 1,000,000,000 |
-| **Standard** | ERC20 |
-
-Deploy your own:
-```bash
-# Testnet (free)
-agent-heap deploy --testnet
-
-# Mainnet (needs real ETH)
-npm run deploy
-```
-
----
-
-## 🔧 Stack
-
-```
-LangGraph    → Agent orchestration
-web3.py      → Blockchain interaction
-ChromaDB     → Vector memory
-SQLAlchemy   → Trade persistence
-Solidity     → Token contract
-Click        → CLI framework
-Rich         → Terminal UI
-pytest       → Test framework
-```
-
----
-
-## 📄 License
-
-MIT — do what you want, just don't blame us.
-
----
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Agent%20Heap-%F0%9F%8F%97%EF%B8%8F%F0%9F%A4%96-7c3aed?style=for-the-badge&logo=github&logoColor=white">
+    <img src="https://img.shields.io/badge/Agent%20Heap-%F0%9F%8F%97%EF%B8%8F%F0%9F%A4%96-7c3aed?style=for-the-badge&logo=github&logoColor=white" alt="Agent Heap">
+  </picture>
+</p>
 
 <p align="center">
-  <sub>Built by agents, for agents. Generated entirely by Claude Code.</sub>
-  <br>
-  <sub><a href="https://github.com/heapchain">@heapchain</a> — autonomous AI agents for DeFi</sub>
+  <b>Autonomous AI agent for multi-chain yield optimization on Arbitrum.</b>
 </p>
+
+<p align="center">
+  <a href="https://github.com/heapchain/agent-heap/actions"><img src="https://img.shields.io/badge/tests-24%20passing-brightgreen?style=for-the-badge&logo=pytest" alt="Tests"></a>
+  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
+  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/LangGraph-✓-8b5cf6?style=for-the-badge" alt="LangGraph"></a>
+  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/MIT-green?style=for-the-badge" alt="MIT"></a>
+  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/Arbitrum-Sepolia%20%7C%20Mainnet-blue?style=for-the-badge&logo=arbitrum" alt="Arbitrum"></a>
+  <a href="https://github.com/heapchain/agent-heap"><img src="https://img.shields.io/badge/LiteLLM-100%2B%20models-FF6F61?style=for-the-badge" alt="LiteLLM"></a>
+</p>
+
+**Agent Heap** is a LangGraph-powered agent that continuously monitors DeFi lending protocols (Aave, Compound, Morpho) on Arbitrum, analyzes yields via LLM reasoning, executes deposits using Kelly-criterion position sizing, and manages a HEAP token buyback loop — all autonomously.
+
+## Features
+
+- **Autonomous loop** — 24/7 agent cycle (collect → analyze → signal → execute → buyback)
+- **Live yield data** — DeFiLlama APY + TVL for Aave V3, Compound, and Morpho
+- **LLM analysis** — Supports any LLM via LiteLLM (OpenAI, Anthropic, Gemini, Groq, DeepSeek, etc.); falls back to highest-APY heuristic
+- **Kelly-criterion sizing** — Optimal position size based on win probability and expected return
+- **Circuit breaker** — Daily PnL tracking; halts on excess drawdown
+- **Slippage protection** — Rejects trades exceeding configurable threshold
+- **HEAP buyback loop** — 10% of yield profits buy and burn HEAP tokens automatically
+- **Vector memory** — ChromaDB stores past decisions for context-aware ranking
+- **CLI** — `agent-heap start | status | history` with rich terminal output
+
+## Quick start
+
+```bash
+git clone https://github.com/heapchain/agent-heap.git
+cd agent-heap
+uv sync
+cp .env.example .env
+uv run pytest -v              # 24 tests
+agent-heap start --interval 21600   # 6h agent loop
+```
+
+Set `LLM_MODEL` (e.g. `gpt-4o`, `claude-sonnet-4`) + your provider's API key in `.env`.
+
+## Architecture
+
+```
+Collector → Analyzer → Signaler → Executor → Buyback
+(DeFiLlama)  (LLM +     (risk      (Web3.py)  (HEAP token
+              ChromaDB)  engine)               buy & burn)
+```
+
+## Tests
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Agent Flow       ■■■■■■■■■■■■■■■  6/6  ✅
+ Risk Models      ■■■■■■■■■■■■■■■  4/4  ✅
+ Data Feeds       ■■■■■■■■■■■■■■■  2/2  ✅
+ Memory & CLI     ■■■■■■■■■■■■■■■  2/2  ✅
+ HEAP Buyback     ■■■■■■■■■■■■■■■  10/10 ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ TOTAL: 24/24 PASSING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+## Roadmap
+
+- [x] LangGraph pipeline, data feeds, risk modules, CLI
+- [x] HEAP token buyback loop (24 tests)
+- [ ] **Mainnet** — Funded wallet, live deposits on Arbitrum One
+- [ ] **Auto-compound** — Rebalance between pools
+- [ ] **Notifications** — Telegram/Discord alerts
+- [ ] **Multi-chain** — Base, Optimism, Polygon
+
+## License
+
+MIT
