@@ -124,8 +124,8 @@ func SaveTrade(action string, amount float64, token string, simulatedPnL float64
 	defer db.Close()
 
 	_, err = db.Exec(
-		`INSERT INTO trades (action, amount, token, simulated_pnl) VALUES (?, ?, ?, ?)`,
-		action, amount, token, simulatedPnL,
+		`INSERT INTO trades (action, amount, token, simulated_pnl, timestamp) VALUES (?, ?, ?, ?, ?)`,
+		action, amount, token, simulatedPnL, Now(),
 	)
 	return err
 }

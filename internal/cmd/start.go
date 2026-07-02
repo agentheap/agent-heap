@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,32 +35,32 @@ func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("Agent Heap starting...")
 	fmt.Printf("Interval: %ds | Ctrl+C to stop\n", interval)
 
-	// Initialize DB
 	if err := db.Init(); err != nil {
 		return fmt.Errorf("db init: %w", err)
 	}
-
-	// Set running state
 	if err := db.SetAgentStatus("running"); err != nil {
 		return fmt.Errorf("set status: %w", err)
 	}
 
-	// Signal handling
+	// Signal handling — buffered so we don't miss a signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	running := true
+	var mu sync.Mutex
 
-	// Heartbeat ticker
 	heartbeatTick := time.NewTicker(30 * time.Second)
 	defer heartbeatTick.Stop()
 
-	// Loop interval ticker
 	loopTick := time.NewTicker(time.Duration(interval) * time.Second)
 	defer loopTick.Stop()
 
-	// Run once immediately
-	runAgentIteration()
+	// Run once immediately in a goroutine so Ctrl+C works even if it hangs
+	go func() {
+		mu.Lock()
+		runAgentIteration()
+		mu.Unlock()
+	}()
 
 	for running {
 		select {
@@ -71,7 +72,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 			_ = db.SaveHeartbeat()
 
 		case <-loopTick.C:
-			runAgentIteration()
+			go func() {
+				mu.Lock()
+				defer mu.Unlock()
+				if !running {
+					return
+				}
+				runAgentIteration()
+			}()
 		}
 	}
 
@@ -83,7 +91,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 func runAgentIteration() {
 	fmt.Println("Running agent graph...")
-	result, err := agent.Run()
+	result, _, err := agent.RunWithKey()
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
@@ -103,6 +111,5 @@ func runAgentIteration() {
 		_ = db.SaveTrade(action, amount, pool, 0)
 	}
 
-	// Update last run timestamp
 	_ = db.UpdateLastRun()
 }

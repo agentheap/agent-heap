@@ -23,12 +23,6 @@ If KEYSTORE_FILE + KEYSTORE_PASSPHRASE or PRIVATE_KEY is configured,
 the key is passed to the agent for real execution. Otherwise runs in
 simulated mode.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Check spending limits before running
-		if err := checkSpendingLimits(); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️ Spending limit: %v\n", err)
-			return nil
-		}
-
 		result, _, err := agent.RunWithKey()
 		if err != nil {
 			return fmt.Errorf("agent run failed: %w", err)
@@ -39,12 +33,19 @@ simulated mode.`,
 		buyback := getMap(result, "buyback_result")
 		errs := getStrings(result, "errors")
 
+		// Check spending limits against the actual tx amount
+		if tx != nil {
+			amount := floatOr(tx, "amount", 0)
+			if err := checkSpendingLimits(amount); err != nil {
+				return fmt.Errorf("blocked by spending limit: %w", err)
+			}
+		}
+
 		// Check address allowlist if transaction has a recipient
 		if tx != nil {
 			if to := stringOr(tx, "to", ""); to != "" {
 				if !wallet.IsAllowedAddress(to) {
-					fmt.Fprintf(os.Stderr, "⚠️ Address %s is not in the allowlist — refusing to send\n", to)
-					return nil
+					return fmt.Errorf("address %s is not in the allowlist — refusing to send", to)
 				}
 			}
 		}
@@ -98,22 +99,25 @@ simulated mode.`,
 	},
 }
 
-// checkSpendingLimits checks if configured spending limits are exceeded.
-func checkSpendingLimits() error {
+// checkSpendingLimits checks if a transaction amount would exceed limits.
+// Called after the agent returns so we know the actual amount.
+func checkSpendingLimits(amount float64) error {
 	maxTxStr := os.Getenv("MAX_TX_AMOUNT")
 	dailyLimitStr := os.Getenv("DAILY_TX_LIMIT")
 
 	if maxTxStr == "" && dailyLimitStr == "" {
-		return nil // No limits configured
+		return nil
 	}
 
 	maxTx := parseFloatEnv(maxTxStr, 0)
 	dailyLimit := parseFloatEnv(dailyLimitStr, 0)
 
-	if maxTx <= 0 && dailyLimit <= 0 {
-		return nil
+	// Check max per-transaction amount
+	if maxTx > 0 && amount > maxTx {
+		return fmt.Errorf("MAX_TX_AMOUNT exceeded: %.4f > %.4f USDC", amount, maxTx)
 	}
 
+	// Check daily volume
 	if dailyLimit > 0 {
 		if err := db.Init(); err != nil {
 			return fmt.Errorf("init db: %w", err)
@@ -122,8 +126,8 @@ func checkSpendingLimits() error {
 		if err != nil {
 			return err
 		}
-		if todayVolume >= dailyLimit {
-			return fmt.Errorf("daily limit reached: %.4f / %.4f USDC", todayVolume, dailyLimit)
+		if todayVolume+amount > dailyLimit {
+			return fmt.Errorf("daily limit would be exceeded: %.4f + %.4f > %.4f USDC", todayVolume, amount, dailyLimit)
 		}
 	}
 

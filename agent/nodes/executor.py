@@ -126,7 +126,11 @@ def build_deposit_tx(
     if protocol == "compound":
         return _build_compound_supply(amount_wei, token_address or sender)
     if protocol == "morpho":
-        return _build_morpho_deposit(amount_wei, sender)
+        try:
+            return _build_morpho_deposit(amount_wei, sender)
+        except NotImplementedError as e:
+            logger.warning("Morpho deposit not available: %s", e)
+            return None
     logger.warning("Unknown protocol '%s'", protocol)
     return None
 
@@ -196,42 +200,19 @@ def _build_compound_supply(
 def _build_morpho_deposit(amount_wei: int, sender: str) -> dict[str, Any]:
     """Build a Morpho Blue ``supply`` transaction.
 
-    Uses empty ``MarketParams`` placeholders where real parameters would
-    come from an on-chain lookup or config - these must be resolved
-    before the transaction is executable.
-    """
-    morpho_addr = PROTOCOL_ADDRESSES["morpho"]
-    abi = load_morpho_blue_abi()
-    contract = _w3().eth.contract(address=morpho_addr, abi=abi)
+    Requires valid MarketParams (loanToken, collateralToken, oracle, IRM, LLTV)
+    that must be fetched on-chain from the Morpho Blue market registry.
 
-    # NOTE: MarketParams would normally be fetched from a market
-    # registry or config.  The values below are placeholders that
-    # illustrate the shape of the struct - real on-chain calls must
-    # supply the correct loanToken, collateralToken, oracle, IRM and
-    # LLTV for the specific market.
-    market_params = (
-        USDC,  # loanToken (auto-selects mainnet or sepolia)
-        "0x0000000000000000000000000000000000000000",  # collateralToken (none)
-        "0x0000000000000000000000000000000000000000",  # oracle (placeholder)
-        "0x0000000000000000000000000000000000000000",  # irm (placeholder)
-        0,  # lltv (0 = unset)
+    Returns a simulated result with an error if market params are unavailable.
+    """
+    logger.warning(
+        "Morpho Blue deposit requires on-chain market params that are not yet configured."
+        " Simulating instead of sending a tx that would fail."
     )
-    data = contract.encode_abi(
-        "supply",
-        args=[
-            market_params,
-            amount_wei,  # assets
-            0,  # shares (0 = compute from assets)
-            sender,  # onBehalf
-            b"",  # data
-        ],
+    raise NotImplementedError(
+        "Morpho Blue deposits need real MarketParams (oracle, IRM, LLTV) fetched from"
+        " the Morpho Blue contract. Configure them in agent/nodes/abi/ before using."
     )
-    return {
-        "to": morpho_addr,
-        "data": data,
-        "value": 0,
-        "description": f"Morpho Blue supply {amount_wei} USDC",
-    }
 
 
 # ── Transaction execution ───────────────────────────────────────────
@@ -420,8 +401,8 @@ def _send_transaction(w3, account, tx_def: dict[str, Any]) -> tuple[Any, dict]:
             (GAS_BUFFER_MULTIPLIER - 1) * 100,
         )
     except Exception as e:
-        logger.warning("Gas estimation failed (%s), using default 500_000", e)
-        tx["gas"] = 500_000
+        logger.warning("Gas estimation failed (%s), using safe default 150k", e)
+        tx["gas"] = 150_000
 
     # Fetch base fee from latest block for EIP-1559
     try:
