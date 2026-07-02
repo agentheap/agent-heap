@@ -13,42 +13,60 @@ var historyCmd = &cobra.Command{
 	Use:   "history",
 	Short: "Show recent agent decisions",
 	Long:  `Query recent trades table and display the last N decisions.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
 
 		if err := db.Init(); err != nil {
-			return fmt.Errorf("db init: %w", err)
+			fmt.Printf("Error: db init: %v\n", err)
+			return
 		}
 
 		trades, err := db.GetRecentTrades(limit)
 		if err != nil {
-			return fmt.Errorf("get trades: %w", err)
+			fmt.Printf("Error: get trades: %v\n", err)
+			return
 		}
 
 		if len(trades) == 0 {
 			fmt.Println("No history yet")
-			return nil
+			return
 		}
 
 		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader([]string{"ID", "Action", "Token", "Amount", "Timestamp"})
+		table.SetHeader([]string{"ID", "Action", "Token", "Amount", "Gas", "Tx Hash", "Timestamp"})
 
 		for _, t := range trades {
 			ts := ""
 			if !t.Timestamp.IsZero() {
 				ts = t.Timestamp.Format("2006-01-02 15:04:05")
 			}
+
+			txHash := ""
+			if t.TxHash != "" {
+				if len(t.TxHash) > 16 {
+					txHash = t.TxHash[:16] + "..."
+				} else {
+					txHash = t.TxHash
+				}
+			}
+
+			gasStr := ""
+			if t.GasCost > 0 {
+				gasStr = fmt.Sprintf("%.6f", t.GasCost)
+			}
+
 			table.Append([]string{
 				fmt.Sprintf("%d", t.ID),
 				t.Action,
 				t.Token,
 				fmt.Sprintf("%.4f", t.Amount),
+				gasStr,
+				txHash,
 				ts,
 			})
 		}
 
 		table.Render()
-		return nil
 	},
 }
 

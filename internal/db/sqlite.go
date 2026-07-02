@@ -206,7 +206,7 @@ func GetRecentTrades(limit int) ([]Trade, error) {
 	defer db.Close()
 
 	rows, err := db.Query(
-		`SELECT id, action, amount, token, timestamp FROM trades ORDER BY id DESC LIMIT ?`,
+		`SELECT id, action, amount, token, gas_cost, tx_hash, timestamp FROM trades ORDER BY id DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
@@ -218,11 +218,15 @@ func GetRecentTrades(limit int) ([]Trade, error) {
 	for rows.Next() {
 		var t Trade
 		var ts sql.NullTime
-		if err := rows.Scan(&t.ID, &t.Action, &t.Amount, &t.Token, &ts); err != nil {
+		var txHash sql.NullString
+		if err := rows.Scan(&t.ID, &t.Action, &t.Amount, &t.Token, &t.GasCost, &txHash, &ts); err != nil {
 			return nil, err
 		}
 		if ts.Valid {
 			t.Timestamp = ts.Time
+		}
+		if txHash.Valid {
+			t.TxHash = txHash.String
 		}
 		trades = append(trades, t)
 	}

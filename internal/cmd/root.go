@@ -5,6 +5,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
+	SilenceUsage: true,
 	Use:   "agent-heap",
 	Short: "Agent Heap — Multi-chain yield optimization AI agent",
 	Long: `Agent Heap is a multi-chain yield optimization AI agent.
@@ -22,4 +23,7 @@ func init() {
 	rootCmd.AddCommand(historyCmd)
 	rootCmd.AddCommand(walletCmd)
 	rootCmd.AddCommand(memoryCmd)
+	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(healthCmd)
+	rootCmd.AddCommand(runCmd)
 }

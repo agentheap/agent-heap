@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          BINARY="agent-heap-${{ matrix.goos }}-${{ matrix.goarch }}"
+          CGO_ENABLED=0 go build \
+            -ldflags="-s -w" \
+            -o "$BINARY" \
+            ./cmd/agent-heap/
+          echo "built=$BINARY" >> $GITHUB_ENV
+          echo "Built $BINARY ($(ls -lh $BINARY | awk '{print $5}'))"
+
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: agent-heap-*
+          generate_release_notes: true
