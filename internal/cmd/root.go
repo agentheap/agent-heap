@@ -26,4 +26,5 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(securityCmd)
 }

@@ -36,6 +36,17 @@ type AgentState struct {
 	Config  string // JSON blob
 }
 
+// TxLogEntry represents a transaction log entry for rate limiting.
+type TxLogEntry struct {
+	ID        int64
+	TxHash    string
+	Amount    float64
+	Protocol  string
+	Status    string
+	Error     string
+	Timestamp Time
+}
+
 var (
 	mu     sync.Mutex
 	dbPath string
@@ -86,7 +97,16 @@ func initDB() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		ts DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
-	`
+
+	CREATE TABLE IF NOT EXISTS tx_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		tx_hash TEXT,
+		amount REAL DEFAULT 0,
+		protocol TEXT,
+		status TEXT DEFAULT 'pending',
+		error TEXT,
+		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
 
 	_, err = db.Exec(schema)
 	return err
@@ -155,7 +175,6 @@ func SetAgentStatus(status string) error {
 	}
 	defer db.Close()
 
-	// Check if a state row exists
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM agent_state`).Scan(&count); err != nil {
 		return err
@@ -238,6 +257,90 @@ func GetRecentTrades(limit int) ([]Trade, error) {
 	return trades, rows.Err()
 }
 
+// GetDailyTxVolume returns the total trade amount for today UTC.
+func GetDailyTxVolume() (float64, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	db, err := sql.Open("sqlite", dbPathOrDefault())
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	startOfDay := Now().Truncate(24 * time.Hour)
+	var total sql.NullFloat64
+	err = db.QueryRow(
+		`SELECT SUM(amount) FROM trades WHERE timestamp >= ?`, startOfDay,
+	).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	if total.Valid {
+		return total.Float64, nil
+	}
+	return 0, nil
+}
+
+// GetRecentTxCount returns the number of transactions in the last N hours.
+func GetRecentTxCount(hours int) (int, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	db, err := sql.Open("sqlite", dbPathOrDefault())
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	since := Now().Add(-time.Duration(hours) * time.Hour)
+	var count int
+	err = db.QueryRow(
+		`SELECT COUNT(*) FROM trades WHERE timestamp >= ?`, since,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// LogTx records a transaction attempt in tx_log.
+func LogTx(hash, protocol, status, errorMsg string, amount float64) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	db, err := sql.Open("sqlite", dbPathOrDefault())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	_, err = db.Exec(
+		`INSERT INTO tx_log (tx_hash, amount, protocol, status, error) VALUES (?, ?, ?, ?, ?)`,
+		hash, amount, protocol, status, errorMsg,
+	)
+	return err
+}
+
+// GetTxCountSince returns the number of tx_log entries since the given time.
+func GetTxCountSince(since Time) (int, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	db, err := sql.Open("sqlite", dbPathOrDefault())
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	var count int
+	err = db.QueryRow(`SELECT COUNT(*) FROM tx_log WHERE timestamp >= ?`, since).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // SaveHeartbeat records a heartbeat timestamp.
 func SaveHeartbeat() error {
 	mu.Lock()
@@ -264,9 +367,7 @@ func DBPath() string {
 }
 
 func init() {
-	// Override dbPath from environment
 	if p := os.Getenv("DATABASE_URL"); p != "" {
-		// Strip sqlite:/// prefix if present
 		if len(p) > 9 && p[:9] == "sqlite://" {
 			p = p[9:]
 		}

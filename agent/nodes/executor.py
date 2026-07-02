@@ -237,6 +237,20 @@ def _build_morpho_deposit(amount_wei: int, sender: str) -> dict[str, Any]:
 # ── Transaction execution ───────────────────────────────────────────
 
 
+def _spending_limits_exceeded(amount: float) -> str | None:
+    """Check if the transaction amount exceeds configured spending limits.
+    Returns an error message if exceeded, None otherwise."""
+    max_tx = os.getenv("MAX_TX_AMOUNT")
+    if max_tx:
+        try:
+            max_amount = float(max_tx)
+            if amount > max_amount:
+                return f"MAX_TX_AMOUNT exceeded: {amount:.4f} > {max_amount:.4f} USDC"
+        except ValueError:
+            pass
+    return None
+
+
 def _execute_real(
     state: dict[str, Any],
     signal: dict[str, Any],
@@ -252,6 +266,22 @@ def _execute_real(
         amount: float = signal["amount"]
         pool: str = signal.get("pool", "USDC")
         _token_address = USDC
+
+        # ── Spending limit checks ──────────────────────────────────────
+        limit_error = _spending_limits_exceeded(amount)
+        if limit_error:
+            logger.warning("Spending limit blocked: %s", limit_error)
+            return {
+                **state,
+                "tx_result": {
+                    "simulated": True,
+                    "error": limit_error,
+                    "action": action,
+                    "protocol": protocol,
+                    "pool": pool,
+                    "amount": amount,
+                },
+            }
 
         if action != "deposit":
             logger.warning("Unsupported action '%s' - simulating", action)

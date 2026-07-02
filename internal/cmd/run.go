@@ -3,8 +3,11 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/agentheap/agent-heap/internal/agent"
+	"github.com/agentheap/agent-heap/internal/db"
+	"github.com/agentheap/agent-heap/internal/wallet"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -14,20 +17,38 @@ var runCmd = &cobra.Command{
 	Short: "Run a single agent decision cycle",
 	Long: `Execute one full agent cycle: collect yields from DeFiLlama,
 analyze via LLM, generate a signal, execute (or simulate), and run buyback.
-Prints the result and exits.`,
+Prints the result and exits.
+
+If KEYSTORE_FILE + KEYSTORE_PASSPHRASE or PRIVATE_KEY is configured,
+the key is passed to the agent for real execution. Otherwise runs in
+simulated mode.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		result, err := agent.Run()
+		// Check spending limits before running
+		if err := checkSpendingLimits(); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ Spending limit: %v\n", err)
+			return nil
+		}
+
+		result, _, err := agent.RunWithKey()
 		if err != nil {
 			return fmt.Errorf("agent run failed: %w", err)
 		}
 
-		// Extract fields from result
 		tx := getMap(result, "tx_result")
 		analysis := getMap(result, "analysis")
 		buyback := getMap(result, "buyback_result")
 		errs := getStrings(result, "errors")
 
-		// ── Transaction result ──
+		// Check address allowlist if transaction has a recipient
+		if tx != nil {
+			if to := stringOr(tx, "to", ""); to != "" {
+				if !wallet.IsAllowedAddress(to) {
+					fmt.Fprintf(os.Stderr, "⚠️ Address %s is not in the allowlist — refusing to send\n", to)
+					return nil
+				}
+			}
+		}
+
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader([]string{"Field", "Value"})
 		table.SetColumnAlignment([]int{tablewriter.ALIGN_LEFT, tablewriter.ALIGN_LEFT})
@@ -52,19 +73,16 @@ Prints the result and exits.`,
 			table.Append([]string{"Status", "No transaction (signal may be empty or circuit breaker tripped)"})
 		}
 
-		// ── Analysis details ──
 		if analysis != nil {
 			table.Append([]string{"Best Protocol", stringOr(analysis, "protocol", "—")})
 			table.Append([]string{"Best APY", fmt.Sprintf("%.2f%%", floatOr(analysis, "apy", 0))})
 		}
 
-		// ── Buyback result ──
 		if buyback != nil {
 			status := stringOr(buyback, "status", "—")
 			table.Append([]string{"Buyback", status})
 		}
 
-		// ── Errors ──
 		if len(errs) > 0 {
 			for i, e := range errs {
 				label := "Error"
@@ -78,6 +96,49 @@ Prints the result and exits.`,
 		table.Render()
 		return nil
 	},
+}
+
+// checkSpendingLimits checks if configured spending limits are exceeded.
+func checkSpendingLimits() error {
+	maxTxStr := os.Getenv("MAX_TX_AMOUNT")
+	dailyLimitStr := os.Getenv("DAILY_TX_LIMIT")
+
+	if maxTxStr == "" && dailyLimitStr == "" {
+		return nil // No limits configured
+	}
+
+	maxTx := parseFloatEnv(maxTxStr, 0)
+	dailyLimit := parseFloatEnv(dailyLimitStr, 0)
+
+	if maxTx <= 0 && dailyLimit <= 0 {
+		return nil
+	}
+
+	if dailyLimit > 0 {
+		if err := db.Init(); err != nil {
+			return fmt.Errorf("init db: %w", err)
+		}
+		todayVolume, err := db.GetDailyTxVolume()
+		if err != nil {
+			return err
+		}
+		if todayVolume >= dailyLimit {
+			return fmt.Errorf("daily limit reached: %.4f / %.4f USDC", todayVolume, dailyLimit)
+		}
+	}
+
+	return nil
+}
+
+func parseFloatEnv(s string, def float64) float64 {
+	if s == "" {
+		return def
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return def
+	}
+	return v
 }
 
 // ── Result helpers ───────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/agentheap/agent-heap/internal/wallet"
 )
 
 // execCommand is overridable in tests to avoid running real python3.
@@ -16,11 +18,8 @@ var execCommand = exec.Command
 type Result map[string]interface{}
 
 // pythonCmd returns the command to run the agent graph.
-// Prefers uv run for venv management, falls back to python3.
 func pythonCmd() (string, []string) {
-	// Check if uv is available
 	if _, err := exec.LookPath("uv"); err == nil {
-		// Check if there's a pyproject.toml in cwd
 		cwd, _ := os.Getwd()
 		if cwd != "" {
 			if _, err := os.Stat(filepath.Join(cwd, "pyproject.toml")); err == nil {
@@ -29,7 +28,6 @@ func pythonCmd() (string, []string) {
 		}
 	}
 
-	// Check .venv/bin/python in cwd
 	cwd, _ := os.Getwd()
 	if cwd != "" {
 		venvPython := filepath.Join(cwd, ".venv", "bin", "python3")
@@ -41,8 +39,38 @@ func pythonCmd() (string, []string) {
 	return "python3", []string{"-m", "agent.graph"}
 }
 
+// ResolvePrivateKey loads the private key from the configured source.
+// Priority: KEYSTORE_FILE + KEYSTORE_PASSPHRASE > PRIVATE_KEY env var.
+// Returns the hex private key (with 0x prefix), the derived address, or an error.
+func ResolvePrivateKey() (string, string, error) {
+	ksFile := os.Getenv("KEYSTORE_FILE")
+	ksPass := os.Getenv("KEYSTORE_PASSPHRASE")
+
+	if ksFile != "" && ksPass != "" {
+		data, err := os.ReadFile(ksFile)
+		if err != nil {
+			return "", "", fmt.Errorf("read keystore %s: %w", ksFile, err)
+		}
+		privateKey, addr, err := wallet.LoadPrivateKeyFromReader(data, ksPass)
+		if err != nil {
+			return "", "", fmt.Errorf("decrypt keystore: %w", err)
+		}
+		return privateKey, addr, nil
+	}
+
+	pk := os.Getenv("PRIVATE_KEY")
+	if pk != "" {
+		addr, err := wallet.PrivateKeyToAddress(pk)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid PRIVATE_KEY: %w", err)
+		}
+		return pk, addr, nil
+	}
+
+	return "", "", fmt.Errorf("no private key configured (set KEYSTORE_FILE + KEYSTORE_PASSPHRASE, or PRIVATE_KEY)")
+}
+
 // Run executes the Python agent graph as a subprocess.
-// It calls `python3 -m agent.graph` and returns the parsed JSON result.
 func Run() (Result, error) {
 	cmdName, cmdArgs := pythonCmd()
 	cmd := execCommand(cmdName, cmdArgs...)
@@ -66,6 +94,44 @@ func Run() (Result, error) {
 	}
 
 	return result, nil
+}
+
+// RunWithKey loads the private key from the configured source and passes it
+// to the Python subprocess as PRIVATE_KEY. Falls back to plain Run() if
+// no key is configured.
+func RunWithKey() (Result, string, error) {
+	privateKey, addr, err := ResolvePrivateKey()
+	if err != nil {
+		// No key configured — run without it (simulated mode)
+		result, runErr := Run()
+		return result, "", runErr
+	}
+
+	cmdName, cmdArgs := pythonCmd()
+	cmd := execCommand(cmdName, cmdArgs...)
+
+	// Set PRIVATE_KEY in subprocess environment
+	cmd.Env = append(cmd.Environ(), fmt.Sprintf("PRIVATE_KEY=%s", privateKey))
+
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, addr, fmt.Errorf("agent graph exited (%v): %s", exitErr, string(exitErr.Stderr))
+		}
+		return nil, addr, fmt.Errorf("run agent graph: %w", err)
+	}
+
+	outStr := strings.TrimSpace(string(output))
+	if outStr == "" {
+		return Result{}, addr, nil
+	}
+
+	var result Result
+	if err := json.Unmarshal([]byte(outStr), &result); err != nil {
+		return nil, addr, fmt.Errorf("parse agent output: %w", err)
+	}
+
+	return result, addr, nil
 }
 
 // RunWithEnv executes the Python agent graph with additional environment variables.
