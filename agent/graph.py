@@ -1,6 +1,9 @@
 """Agent Heap graph -- LangGraph state machine for yield optimization.
 
-Pipeline: collector -> analyzer -> signaler -> executor -> buyback
+Pipeline: collector -> harvester -> analyzer -> signaler -> executor -> buyback
+
+The harvester checks existing positions for accrued yield before the
+analyzer picks the best pool, enabling the harvest-reinvest pattern.
 """
 
 from typing import Any, Literal, TypedDict
@@ -9,6 +12,7 @@ from langgraph.graph import StateGraph
 
 from agent.memory.vector_store import AgentMemory
 from agent.nodes.collector import collect_yields
+from agent.nodes.harvester import harvest
 from agent.nodes.analyzer import analyze
 from agent.nodes.signal import generate_signal
 from agent.nodes.executor import execute
@@ -25,6 +29,9 @@ class AgentState(TypedDict):
     errors: list[str]
     memory_context: list[dict[str, Any]]
     memory_path: str
+    harvest_signal: dict[str, Any] | None
+    harvest_yield_info: list[dict[str, Any]]
+    withdrawal_results: list[dict[str, Any]]
 
 
 _breaker = CircuitBreaker()
@@ -50,12 +57,14 @@ def _build_graph(
 
     builder = StateGraph(AgentState)
     builder.add_node("collector", collect_yields)
+    builder.add_node("harvester", harvest)
     builder.add_node("analyzer", analyze)
     builder.add_node("signaler", generate_signal)
     builder.add_node("executor", execute)
     builder.add_node("buyback", run_buyback)
     builder.set_entry_point("collector")
-    builder.add_edge("collector", "analyzer")
+    builder.add_edge("collector", "harvester")
+    builder.add_edge("harvester", "analyzer")
     builder.add_edge("analyzer", "signaler")
     builder.add_edge("signaler", "executor")
     builder.add_edge("executor", "buyback")
@@ -71,6 +80,9 @@ def _build_graph(
             "errors": [],
             "memory_context": memory_context,
             "memory_path": memory_path,
+            "harvest_signal": None,
+            "harvest_yield_info": [],
+            "withdrawal_results": [],
         }
     )
     return result
@@ -94,6 +106,11 @@ def store_decision_from_result(mem: AgentMemory, result: dict[str, Any]) -> None
         "simulated": tx.get("simulated"),
     }
 
+    # Include harvest info if any
+    harvest_info = result.get("harvest_yield_info", [])
+    if harvest_info:
+        decision["harvested"] = sum(h.get("accrued_yield", 0) for h in harvest_info)
+
     # Add any error info if present
     errors = result.get("errors", [])
     if errors:
@@ -103,7 +120,7 @@ def store_decision_from_result(mem: AgentMemory, result: dict[str, Any]) -> None
 
 
 def run_agent() -> dict[str, Any]:
-    """Run the full agent pipeline: collect -> analyze -> signal -> execute -> buyback.
+    """Run the full agent pipeline: collect -> harvest -> analyze -> signal -> execute -> buyback.
 
     Loads past memory context from ChromaDB, invokes the graph,
     persists the new decision, and returns the result dict.

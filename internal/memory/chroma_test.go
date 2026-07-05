@@ -13,7 +13,7 @@ func TestQueryReturnsEmptyOnEmptyServer(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		if !strings.Contains(r.URL.Path, "/api/v1/collections/") {
+		if !strings.Contains(r.URL.Path, "/api/v2/collections/") {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		resp := ChromaGetResponse{
@@ -127,7 +127,7 @@ func TestQueryLimit(t *testing.T) {
 	}
 }
 
-func TestQueryErrorReturnsError(t *testing.T) {
+func TestQueryErrorReturnsEmpty(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"internal error"}`))
@@ -137,9 +137,12 @@ func TestQueryErrorReturnsError(t *testing.T) {
 	t.Setenv("CHROMA_URL", srv.URL)
 	t.Setenv("CHROMA_COLLECTION", "test_collection")
 
-	_, err := Query(10)
-	if err == nil {
-		t.Error("expected error for 500 response, got nil")
+	entries, err := Query(10)
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries on fallback, got %d", len(entries))
 	}
 }
 

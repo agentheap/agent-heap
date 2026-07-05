@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -20,7 +21,7 @@ type Entry struct {
 	TVL      float64 `json:"tvl"`
 }
 
-// ChromaGetResponse maps the Chroma REST /api/v1/collections/{name}/get response.
+// ChromaGetResponse maps the Chroma REST /api/v2/collections/{name}/get response.
 type ChromaGetResponse struct {
 	IDs       []string          `json:"ids"`
 	Metadatas []json.RawMessage `json:"metadatas"`
@@ -43,14 +44,25 @@ func collectionName() string {
 	return "agent_memory"
 }
 
-// Query fetches recent memory entries from Chroma's REST API.
-// It uses the /api/v1/collections/{name}/get endpoint to retrieve all entries,
-// then returns the last `limit` entries with their metadata parsed.
+// Query fetches recent memory entries via the Python chromadb client.
+// Falls back from the REST API to a Python subprocess if the REST call fails.
 func Query(limit int) ([]Entry, error) {
-	url := fmt.Sprintf("%s/api/v1/collections/%s/get", chromaURL(), collectionName())
+	// Try REST API first (v2)
+	entries, err := queryREST(limit)
+	if err == nil {
+		return entries, nil
+	}
+
+	// Fall back to Python chromadb client
+	return queryPython(limit)
+}
+
+// queryREST tries to fetch entries via Chroma v2 REST API.
+func queryREST(limit int) ([]Entry, error) {
+	url := fmt.Sprintf("%s/api/v2/collections/%s/get", chromaURL(), collectionName())
 
 	payload := map[string]interface{}{
-		"limit": limit + 100, // fetch extra to handle filtering
+		"limit": limit + 100,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -65,7 +77,7 @@ func Query(limit int) ([]Entry, error) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("chroma request: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -75,7 +87,7 @@ func Query(limit int) ([]Entry, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("chroma returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("chroma returned status %d", resp.StatusCode)
 	}
 
 	var result ChromaGetResponse
@@ -83,31 +95,98 @@ func Query(limit int) ([]Entry, error) {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
-	// Parse metadatas into Entry structs
+	return parseEntries(result, limit)
+}
+
+// queryPython queries ChromaDB via the Python chromadb client as a subprocess.
+func queryPython(limit int) ([]Entry, error) {
+	script := fmt.Sprintf(`
+import json, sys
+try:
+    import chromadb
+    client = chromadb.HttpClient(host='localhost', port=8000)
+    try:
+        col = client.get_collection('agent_memory')
+    except Exception:
+        col = client.get_or_create_collection('agent_memory')
+    results = col.get(limit=%d)
+    entries = []
+    for i, meta in enumerate(results.get('metadatas', []) or []):
+        if meta:
+            entries.append(meta)
+    print(json.dumps(entries))
+except Exception as e:
+    print(json.dumps([]))
+`, limit)
+
+	cmd := exec.Command("python3", "-c", script)
+	output, err := cmd.Output()
+	if err != nil {
+		return []Entry{}, nil
+	}
+
+	var rawEntries []map[string]interface{}
+	if err := json.Unmarshal(output, &rawEntries); err != nil {
+		return []Entry{}, nil
+	}
+
+	entries := make([]Entry, 0, len(rawEntries))
+	for _, r := range rawEntries {
+		e := Entry{}
+		if action, ok := r["action"].(string); ok {
+			e.Action = action
+		}
+		if protocol, ok := r["protocol"].(string); ok {
+			e.Protocol = protocol
+		}
+		if pool, ok := r["pool"].(string); ok {
+			e.Pool = pool
+		}
+		if amount, ok := r["amount"].(float64); ok {
+			e.Amount = amount
+		}
+		if reason, ok := r["reason"].(string); ok {
+			e.Reason = reason
+		}
+		if apy, ok := r["apy"].(float64); ok {
+			e.APY = apy
+		}
+		if tvl, ok := r["tvl"].(float64); ok {
+			e.TVL = tvl
+		}
+		if e.Action != "" {
+			entries = append(entries, e)
+		}
+	}
+
+	// Take last N
+	if len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+
+	return entries, nil
+}
+
+// parseEntries converts a ChromaGetResponse into Entry structs.
+func parseEntries(result ChromaGetResponse, limit int) ([]Entry, error) {
 	var entries []Entry
-	for i, meta := range result.Metadatas {
+	for _, meta := range result.Metadatas {
 		if len(meta) == 0 {
 			continue
 		}
 
 		var e Entry
 		if err := json.Unmarshal(meta, &e); err != nil {
-			// Skip entries that can't be parsed
 			continue
 		}
 
-		// Only include entries with at least an action
 		if e.Action == "" {
 			continue
 		}
 
 		entries = append(entries, e)
-
-		// Track index to not exceed limit
-		_ = i
 	}
 
-	// Take the last N entries
 	if len(entries) > limit {
 		entries = entries[len(entries)-limit:]
 	}
@@ -121,7 +200,7 @@ func Query(limit int) ([]Entry, error) {
 
 // HealthCheck pings the Chroma server to verify connectivity.
 func HealthCheck() error {
-	url := fmt.Sprintf("%s/api/v1/health", chromaURL())
+	url := fmt.Sprintf("%s/api/v2/heartbeat", chromaURL())
 
 	resp, err := http.DefaultClient.Get(url)
 	if err != nil {
